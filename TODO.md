@@ -27,6 +27,12 @@
 
 - The page ends with a contact block and a direct email CTA.
 
+## Complete — Interactive terminal easter egg
+
+- Visitors can open a custom terminal with the `~` or `/` keyboard shortcut or the fixed terminal trigger.
+- The terminal accepts commands including `help`, `whoami`, `background`, `skills`, `experience`, `work`, `contact`, and `clear`.
+- Responses are grounded in Dylan Borgen's résumé and match the matrix visual language.
+
 ## Complete — Managed website delivery hygiene
 
 - The page is served from `/` with `/404` retained for the starter fallback.
