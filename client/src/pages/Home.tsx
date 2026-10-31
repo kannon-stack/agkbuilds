@@ -331,16 +331,27 @@ function Home() {
     const move = (event: PointerEvent) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || window.matchMedia("(pointer: coarse)").matches) return;
       const bounds = hero.getBoundingClientRect();
-      const x = ((event.clientX - bounds.left) / bounds.width) * 100;
-      const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+      const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
+      const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
       hero.style.setProperty("--pointer-x", `${x}%`);
       hero.style.setProperty("--pointer-y", `${y}%`);
       hero.style.setProperty("--hero-rotate-x", `${(50 - y) * 0.035}deg`);
       hero.style.setProperty("--hero-rotate-y", `${(x - 50) * 0.035}deg`);
     };
 
+    const reset = () => {
+      hero.style.setProperty("--pointer-x", "50%");
+      hero.style.setProperty("--pointer-y", "50%");
+      hero.style.setProperty("--hero-rotate-x", "0deg");
+      hero.style.setProperty("--hero-rotate-y", "0deg");
+    };
+
     hero.addEventListener("pointermove", move);
-    return () => hero.removeEventListener("pointermove", move);
+    hero.addEventListener("pointerleave", reset);
+    return () => {
+      hero.removeEventListener("pointermove", move);
+      hero.removeEventListener("pointerleave", reset);
+    };
   }, []);
 
   const copyEmail = async () => {
