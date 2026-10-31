@@ -33,8 +33,13 @@
 - The terminal accepts commands including `help`, `whoami`, `background`, `skills`, `experience`, `work`, `contact`, and `clear`.
 - Responses are grounded in Dylan Borgen's résumé and match the matrix visual language.
 
+## Complete — Custom Matrix rain background
+
+- The website includes a custom canvas-based Matrix rain layer behind the portfolio content.
+- The animation uses responsive resizing, subtle green glyph trails, and a reduced-motion guard.
+
 ## Complete — Managed website delivery hygiene
 
-- The page is served from `/` with `/404` retained for the starter fallback.
+- The page is served from `/`; 404-only fallback routes are excluded from the application route manifest.
 - `public/manus-routes.json` describes the complete route set.
 - TypeScript diagnostics remain registered and the static build passes.

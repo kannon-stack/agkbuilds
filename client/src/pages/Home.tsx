@@ -123,7 +123,7 @@ const recognition = [
 ];
 
 function MatrixGlyphs() {
-  const glyphs = ["01", "//", "[]", "<> ", "++", "::", "TX", "AG", "07", "_", "=", "{}"];
+  const glyphs = ["01", "//", "[]", "<> ", "++", "::", "TX", "AG", "07", "_", "=", "{}"]; 
   return (
     <div className="matrix-glyphs" aria-hidden="true">
       {Array.from({ length: 18 }).map((_, index) => (
@@ -135,6 +135,66 @@ function MatrixGlyphs() {
       ))}
     </div>
   );
+}
+
+function MatrixRain() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    const glyphs = "アカサタナハマヤラワ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<>[]{}";
+    const fontSize = 16;
+    let width = 0;
+    let height = 0;
+    let drops: number[] = [];
+    let frame = 0;
+
+    const resize = () => {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      drops = Array.from({ length: Math.ceil(width / fontSize) }, () => Math.random() * -40);
+      context.fillStyle = "#090b08";
+      context.fillRect(0, 0, width, height);
+    };
+
+    const draw = () => {
+      context.fillStyle = "rgba(9, 11, 8, 0.075)";
+      context.fillRect(0, 0, width, height);
+      context.font = `${fontSize}px "DM Mono", monospace`;
+
+      drops.forEach((drop, column) => {
+        const character = glyphs[Math.floor(Math.random() * glyphs.length)];
+        const x = column * fontSize;
+        const y = drop * fontSize;
+        context.fillStyle = Math.random() > 0.92 ? "rgba(217, 255, 145, 0.68)" : "rgba(184, 242, 58, 0.22)";
+        context.fillText(character, x, y);
+        if (y > height && Math.random() > 0.976) drops[column] = 0;
+        else drops[column] += 0.44 + Math.random() * 0.3;
+      });
+
+      frame = window.requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    frame = window.requestAnimationFrame(draw);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="matrix-rain" aria-hidden="true" />;
 }
 
 function SectionLabel({ index, children }: { index: string; children: string }) {
@@ -293,6 +353,7 @@ function Home() {
 
   return (
     <main className="site-shell">
+      <MatrixRain />
       <header className="site-header">
         <a className="wordmark" href="#top" onClick={closeMenu} aria-label="AGKBUILDS home">
           <span className="wordmark-cursor" aria-hidden="true">_</span>
