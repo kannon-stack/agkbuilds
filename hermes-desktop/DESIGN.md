@@ -1,8 +1,8 @@
 # Talaria — design notes (working title)
 
-A customizable AI chat desktop app in the spirit of Hermes-style clients. v1 covers
-**streaming chat + history** and **provider/model switching + settings**. Everything
-else is designed-for but not built.
+A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
+**streaming chat + history**, **provider/model switching + settings**, and **tool use**
+(files, shell, web) with approvals. Memory/skills and theming are designed-for but not built.
 
 > Rename the app in one place: `APP_NAME` in `src/shared/types.ts` (+ `productName` in `package.json`).
 
@@ -59,6 +59,35 @@ keys encrypted with Electron `safeStorage` (OS keychain) — if no keychain exis
 (some Linux setups) they fall back to plaintext in an owner-only (`0600`) file and the
 Settings UI says so.
 
+## Tool use
+
+The model can call tools via OpenAI-style function calling and chain several rounds
+(capped at 20 steps per message; **Stop** cancels everything, including a running command).
+
+| Tool | Risk | Default | Notes |
+|---|---|---|---|
+| `read_file`, `list_dir` | read | auto inside workspace | Anything outside the workspace (incl. symlink escapes) **always asks** |
+| `write_file`, `edit_file` | write | ask | Workspace-only; outside paths are refused *before* any prompt. `edit_file` needs a unique match |
+| `run_command` | exec | ask | Shell in the workspace, 60 s default / 300 s max timeout, kills the whole process tree, output truncated. **Not sandboxed** |
+| `web_fetch` | network | ask | http(s) GET, HTML → text, 20 s timeout, ~2 MB cap |
+
+**Approval UX.** A pending call renders as a card in the thread showing exactly what will
+happen (the command, the file + content, an old/new diff, the URL) with **Allow once /
+Allow for this chat / Deny**. "Allow for this chat" is in-memory only (resets on restart).
+Per-tool policy (*ask / always allow / disabled*), the master switch and the workspace
+folder live in **Settings → Tools**; the composer chip shows the active workspace.
+
+**Data model.** An assistant `Message` carries `toolCalls[]` (`id, name, arguments, status,
+result`); each model turn is its own assistant message, so a tool round is
+`assistant(tool_calls) → results → assistant(final text)`. `toWire()` expands this to the
+provider format and gives any interrupted call a synthetic result so history never becomes
+invalid after a Stop or crash. Regenerate drops everything after the last user message.
+
+**Safety notes.** Tool output is framed to the model as data, not instructions (system note),
+but prompt injection from files/web pages is a real risk — that's why web fetches and
+commands ask by default and the Settings page warns about "Always allow". Tool code lives in
+`src/main/tools/` and has no Electron dependency (unit-tested in plain Node).
+
 ## UI
 
 - **Layout:** left sidebar (new chat, search, history grouped Today/Yesterday/7 days/Older,
@@ -84,14 +113,16 @@ The seams already exist so these are additive:
    `streamChat` shape; provider `kind` field in `ProviderRecord`.
 3. **Per-chat settings** — `Conversation.systemPrompt` is already honored by `chat.ts`; needs UI. Add presets ("personas").
 4. **Storage → SQLite** — swap `store.ts`; unlocks full-text search over message bodies.
-5. **Tools / agent loop** — new `src/main/tools/` with an approval-prompt IPC channel;
-   tool calls become a new `Message` part type. MCP servers fit the same interface.
+5. **More tools** — add a `ToolImpl` to `src/main/tools/` + a row in `shared/toolMeta.ts`.
+   MCP servers fit the same interface (adapter that turns MCP tools into `ToolImpl`s).
+   Also: per-conversation workspace, command allow/deny patterns, background processes.
 6. **Memory & skills** — stored beside conversations; injected by `chat.ts` when building the wire messages.
 7. **Plugins/commands** — slash-command registry in the composer.
 
 ## Known limitations (v1)
 
 - Text only: no attachments/images, no message editing/branching, no export.
+- Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
 - No context-window management — the full history is sent each turn.
 - Reasoning/"thinking" deltas from providers (e.g. `reasoning_content`) are ignored, not shown.
 - Conversation titles are the first user message (truncated), not model-generated.

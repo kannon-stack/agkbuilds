@@ -53,11 +53,12 @@ export function ChatView() {
           </div>
         ) : (
           <div className="thread">
-            {active!.messages.map((m) => (
+            {active!.messages.map((m, i) => (
               <MessageItem
                 key={m.id}
                 message={m}
                 isLast={m.id === lastId}
+                continuation={m.role === 'assistant' && active!.messages[i - 1]?.role === 'assistant'}
                 streaming={busy && m.id === lastId && m.role === 'assistant'}
                 onRegenerate={regenerate}
               />

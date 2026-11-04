@@ -212,3 +212,52 @@ kbd { font: 11px var(--font-mono); color: var(--muted); border: 1px solid var(--
 
 @media (max-width: 860px) { .sidebar { width: 220px; } .providers { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+/* ---------- Tool calls ---------- */
+.msg-assistant.cont { margin-top: -14px; }
+.tools { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 2px; }
+.tool { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.tool > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.tool > summary::-webkit-details-marker { display: none; }
+.tool > summary:hover { background: var(--surface-2); }
+.tool-icon { width: 16px; text-align: center; flex: none; font-weight: 700; }
+.tool-icon.spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tool-name { font-weight: 600; flex: none; }
+.tool-sum { flex: 1; min-width: 0; color: var(--muted); font: 12px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-status { flex: none; font-size: 11.5px; color: var(--muted); }
+.tool-done .tool-icon { color: var(--ok); }
+.tool-error .tool-icon, .tool-error .tool-status { color: var(--danger); }
+.tool-denied .tool-icon { color: var(--muted); }
+.tool-awaiting_approval { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tool-awaiting_approval .tool-icon, .tool-awaiting_approval .tool-status { color: var(--accent); font-weight: 600; }
+.tool-body { border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.tool-label { font-size: 11.5px; color: var(--muted); }
+.tool-label code, .ws-path { font: 12px var(--font-mono); }
+.tool-pre { margin: 0; padding: 8px 10px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
+.tool-pre.cmd::before { content: '$ '; color: var(--accent); }
+.tool-pre.del { background: color-mix(in srgb, var(--danger), transparent 90%); border-color: color-mix(in srgb, var(--danger), transparent 70%); }
+.tool-pre.add { background: color-mix(in srgb, var(--ok), transparent 90%); border-color: color-mix(in srgb, var(--ok), transparent 70%); }
+.tool-pre.err { color: var(--danger); }
+.tool-approve { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.tool-approve .btn { justify-content: center; }
+.tool-approve .btn.danger { margin-left: auto; }
+
+.composer-left { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.chip { background: transparent; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip:hover { color: var(--text); background: var(--surface-2); }
+.chip.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent), var(--border) 55%); }
+
+.switch { flex-direction: row !important; align-items: flex-start; gap: 10px !important; font-weight: 400 !important; }
+.switch input { margin-top: 4px; }
+.form-block { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.ws-row { display: flex; gap: 8px; align-items: center; }
+.ws-path { flex: 1; min-width: 0; padding: 7px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.perm { border-collapse: collapse; width: 100%; }
+.perm td { padding: 8px 0; border-top: 1px solid var(--border); vertical-align: top; }
+.perm td:last-child { width: 160px; text-align: right; }
+.perm select { width: 100%; }
+.perm tr.dim td:first-child { opacity: .55; }
+.risk { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); margin-left: 6px; }
+.risk-exec, .risk-write { color: var(--danger); border-color: color-mix(in srgb, var(--danger), transparent 60%); }
+.risk-network { color: var(--accent); border-color: color-mix(in srgb, var(--accent), transparent 60%); }

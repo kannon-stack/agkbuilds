@@ -4,7 +4,8 @@ import type {
   ConnectionResult,
   Conversation,
   ConversationSummary,
-  Settings
+  Settings,
+  ToolDecision
 } from '../../shared/types'
 
 interface State {
@@ -17,6 +18,7 @@ interface State {
   models: ConnectionResult | null
   modelsLoading: boolean
   settingsOpen: boolean
+  settingsTab: 'providers' | 'general' | 'tools'
   toast: string | null
 
   init(): Promise<void>
@@ -28,11 +30,12 @@ interface State {
   send(text: string): Promise<void>
   regenerate(): Promise<void>
   stop(): Promise<void>
+  decide(callId: string, decision: ToolDecision): Promise<void>
   setModel(providerId: string, model: string): Promise<void>
   loadModels(providerId?: string): Promise<void>
   applyEvent(e: ChatEvent): void
   setSettings(s: Settings): void
-  openSettings(open: boolean): void
+  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools'): void
   showToast(msg: string): void
 }
 
@@ -47,6 +50,7 @@ export const useStore = create<State>((set, get) => ({
   models: null,
   modelsLoading: false,
   settingsOpen: false,
+  settingsTab: 'providers',
   toast: null,
 
   async init() {
@@ -129,6 +133,25 @@ export const useStore = create<State>((set, get) => ({
     if (active) await window.api.chat.stop(active.id)
   },
 
+  async decide(callId, decision) {
+    // Optimistic: the card leaves the "needs approval" state immediately.
+    const { active } = get()
+    if (active) {
+      set({
+        active: {
+          ...active,
+          messages: active.messages.map((m) => ({
+            ...m,
+            toolCalls: m.toolCalls?.map((c) =>
+              c.id === callId ? { ...c, status: decision === 'deny' ? ('denied' as const) : ('running' as const) } : c
+            )
+          }))
+        }
+      })
+    }
+    await window.api.chat.decide(callId, decision)
+  },
+
   async setModel(providerId, model) {
     const { active, settings } = get()
     if (!active || !settings) return
@@ -177,6 +200,11 @@ export const useStore = create<State>((set, get) => ({
     if (active?.id === e.conversationId) {
       const messages = active.messages.map((m) => {
         if (m.id !== e.messageId) return m
+        if (e.type === 'tool_update') {
+          const calls = m.toolCalls ?? []
+          const exists = calls.some((c) => c.id === e.call.id)
+          return { ...m, toolCalls: exists ? calls.map((c) => (c.id === e.call.id ? e.call : c)) : [...calls, e.call] }
+        }
         if (e.type === 'delta') return { ...m, content: m.content + e.text }
         if (e.type === 'error') return { ...m, error: e.error }
         return m
@@ -192,8 +220,8 @@ export const useStore = create<State>((set, get) => ({
   setSettings(settings) {
     set({ settings })
   },
-  openSettings(open) {
-    set({ settingsOpen: open })
+  openSettings(open, tab) {
+    set((s) => ({ settingsOpen: open, settingsTab: tab ?? s.settingsTab }))
   },
   showToast(msg) {
     clearTimeout(toastTimer)

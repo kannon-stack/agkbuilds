@@ -1,10 +1,33 @@
 // Minimal OpenAI-compatible client (chat/completions streaming + /models).
 // No Electron imports so it can be unit-tested in plain Node.
 
-export interface WireMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+export interface WireToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
 }
+
+export interface WireMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string | null
+  tool_calls?: WireToolCall[]
+  tool_call_id?: string
+}
+
+export interface ToolDef {
+  type: 'function'
+  function: { name: string; description: string; parameters: Record<string, unknown> }
+}
+
+export interface ParsedToolCall {
+  id: string
+  name: string
+  arguments: string
+}
+
+export type StreamEvent =
+  | { type: 'text'; text: string }
+  | { type: 'tool_calls'; calls: ParsedToolCall[] }
 
 export interface StreamOptions {
   baseUrl: string
@@ -12,6 +35,7 @@ export interface StreamOptions {
   model: string
   messages: WireMessage[]
   temperature?: number
+  tools?: ToolDef[]
   signal?: AbortSignal
   /** ms to wait for response headers before giving up. */
   connectTimeoutMs?: number
@@ -41,7 +65,13 @@ export function splitSSE(buffer: string): { payloads: string[]; rest: string } {
   return { payloads, rest }
 }
 
-export type Parsed = { text?: string; done?: boolean; error?: string }
+export interface ToolDelta {
+  index?: number
+  id?: string
+  name?: string
+  args?: string
+}
+export type Parsed = { text?: string; toolDeltas?: ToolDelta[]; done?: boolean; error?: string }
 
 /** Interpret one SSE `data:` payload from a chat.completions stream. */
 export function parsePayload(data: string): Parsed {
@@ -56,8 +86,46 @@ export function parsePayload(data: string): Parsed {
     return { error: typeof json.error === 'string' ? json.error : json.error.message ?? 'Provider error' }
   }
   const choice = json?.choices?.[0]
+  const out: Parsed = {}
   const text: unknown = choice?.delta?.content ?? choice?.text
-  return typeof text === 'string' && text ? { text } : {}
+  if (typeof text === 'string' && text) out.text = text
+  const tcs: any[] | undefined = choice?.delta?.tool_calls
+  if (Array.isArray(tcs) && tcs.length) {
+    out.toolDeltas = tcs.map((t) => ({
+      index: typeof t.index === 'number' ? t.index : undefined,
+      id: typeof t.id === 'string' && t.id ? t.id : undefined,
+      name: typeof t.function?.name === 'string' && t.function.name ? t.function.name : undefined,
+      args: typeof t.function?.arguments === 'string' ? t.function.arguments : undefined
+    }))
+  }
+  return out
+}
+
+/** Reassembles fragmented streamed tool calls into complete ones. */
+export class ToolCallAccumulator {
+  private calls: { id?: string; name: string; args: string }[] = []
+  private lastIndex = -1
+
+  add(deltas: ToolDelta[]) {
+    for (const d of deltas) {
+      // Providers differ: most send `index`; a few omit it and send a fresh `id` per call.
+      let i = d.index ?? (d.id && d.name ? this.calls.length : Math.max(this.lastIndex, 0))
+      if (d.index === undefined && d.id && this.calls.some((c) => c.id === d.id)) {
+        i = this.calls.findIndex((c) => c.id === d.id)
+      }
+      this.lastIndex = i
+      const c = (this.calls[i] ??= { name: '', args: '' })
+      if (d.id) c.id = d.id
+      if (d.name) c.name = c.name ? c.name + d.name : d.name
+      if (d.args) c.args += d.args
+    }
+  }
+
+  result(): ParsedToolCall[] {
+    return this.calls
+      .filter((c) => c && c.name)
+      .map((c, i) => ({ id: c.id ?? `call_${Date.now().toString(36)}_${i}`, name: c.name, arguments: c.args || '{}' }))
+  }
 }
 
 async function errorFromResponse(res: Response): Promise<string> {
@@ -104,8 +172,8 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number, sign
   }
 }
 
-/** Yields content deltas as they arrive. Throws on HTTP/provider errors. */
-export async function* streamChat(opts: StreamOptions): AsyncGenerator<string> {
+/** Yields text deltas, then (if the model asked for tools) one `tool_calls` event. */
+export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEvent> {
   const baseUrl = trimUrl(opts.baseUrl)
   let res: Response
   try {
@@ -118,7 +186,8 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string> {
           model: opts.model,
           messages: opts.messages,
           temperature: opts.temperature,
-          stream: true
+          stream: true,
+          ...(opts.tools?.length ? { tools: opts.tools } : {})
         })
       },
       opts.connectTimeoutMs ?? 30_000,
@@ -127,33 +196,47 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<string> {
   } catch (e) {
     throw networkError(baseUrl, e)
   }
-  if (!res.ok) throw new Error(await errorFromResponse(res))
+  if (!res.ok) {
+    const msg = await errorFromResponse(res)
+    const hint =
+      opts.tools?.length && (res.status === 400 || res.status === 422)
+        ? "\n(If this model doesn't support tool calling, turn tools off in Settings → Tools.)"
+        : ''
+    throw new Error(msg + hint)
+  }
   if (!res.body) throw new Error('Provider returned an empty response body')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
+  const acc = new ToolCallAccumulator()
   let buf = ''
+  let finished = false
+
+  function* handle(payloads: string[]): Generator<StreamEvent> {
+    for (const p of payloads) {
+      const r = parsePayload(p)
+      if (r.error) throw new Error(r.error)
+      if (r.text) yield { type: 'text', text: r.text }
+      if (r.toolDeltas) acc.add(r.toolDeltas)
+      if (r.done) {
+        finished = true
+        return
+      }
+    }
+  }
+
   try {
-    while (true) {
+    while (!finished) {
       const { done, value } = await reader.read()
       if (done) break
       buf += decoder.decode(value, { stream: true })
       const { payloads, rest } = splitSSE(buf)
       buf = rest
-      for (const p of payloads) {
-        const r = parsePayload(p)
-        if (r.error) throw new Error(r.error)
-        if (r.text) yield r.text
-        if (r.done) return
-      }
+      yield* handle(payloads)
     }
-    // flush a final unterminated event
-    const { payloads } = splitSSE(buf + '\n\n')
-    for (const p of payloads) {
-      const r = parsePayload(p)
-      if (r.error) throw new Error(r.error)
-      if (r.text) yield r.text
-    }
+    if (!finished) yield* handle(splitSSE(buf + '\n\n').payloads) // flush unterminated final event
+    const calls = acc.result()
+    if (calls.length) yield { type: 'tool_calls', calls }
   } catch (e) {
     throw networkError(baseUrl, e)
   } finally {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import path from 'node:path'
 import { APP_NAME } from '../shared/types'
 import type { ConnectionResult } from '../shared/types'
@@ -86,6 +86,7 @@ function registerIpc() {
   h('chat:send', (e, req) => chat.sendMessage(e.sender, req))
   h('chat:regenerate', (e, req) => chat.regenerate(e.sender, req))
   h('chat:stop', (_e, id: string) => chat.stop(id))
+  h('chat:decide', (_e, callId: string, decision) => chat.decide(callId, decision))
 
   h('settings:get', () => store.getSettings())
   h('settings:update', async (_e, patch) => {
@@ -95,6 +96,12 @@ function registerIpc() {
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
   h('settings:removeProvider', (_e, id: string) => store.removeProvider(id))
+  h('settings:pickWorkspace', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const opts = { title: 'Choose workspace folder', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] }
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    return r.canceled ? null : r.filePaths[0] ?? null
+  })
 
   h('models:list', (_e, providerId: string) => listFor(providerId))
   h('models:test', async (_e, baseUrl: string, apiKey: string | undefined, providerId?: string) => {

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import type { ConnectionResult, Provider, ThemeSetting } from '../../../shared/types'
+import { TOOL_META, type ToolPolicy } from '../../../shared/toolMeta'
 
-type Tab = 'general' | 'providers'
+type Tab = 'general' | 'providers' | 'tools'
 
 export function SettingsModal() {
-  const { settings, setSettings, openSettings, loadModels } = useStore()
-  const [tab, setTab] = useState<Tab>('providers')
+  const { settings, setSettings, openSettings, loadModels, settingsTab } = useStore()
+  const [tab, setTab] = useState<Tab>(settingsTab)
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && openSettings(false)
@@ -30,19 +31,85 @@ export function SettingsModal() {
           </button>
         </div>
         <div className="tabs">
-          {(['providers', 'general'] as Tab[]).map((t) => (
+          {(['providers', 'tools', 'general'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : 'Providers'}
+              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : 'Providers'}
             </button>
           ))}
         </div>
         <div className="modal-body">
           {tab === 'general' ? (
             <General />
+          ) : tab === 'tools' ? (
+            <Tools />
           ) : (
             <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Tools() {
+  const { settings, setSettings } = useStore()
+  const t = settings!.tools
+  const patch = async (p: Parameters<typeof window.api.settings.update>[0]) => setSettings(await window.api.settings.update(p))
+  const pick = async () => {
+    const dir = await window.api.settings.pickWorkspace()
+    if (dir) await patch({ tools: { workspace: dir } })
+  }
+  const policy = (name: string, def: ToolPolicy) => t.policies[name] ?? def
+
+  return (
+    <div className="form">
+      <label className="check switch">
+        <input type="checkbox" checked={t.enabled} onChange={(e) => patch({ tools: { enabled: e.target.checked } })} />
+        <span>
+          <b>Let the model use tools</b>
+          <span className="hint"> Requires a model that supports OpenAI-style tool calling. Turn off if a model errors on tools.</span>
+        </span>
+      </label>
+
+      <div className="form-block">
+        <b>Workspace folder</b>
+        <div className="ws-row">
+          <code className="ws-path">{t.workspace || 'None chosen — file and command tools are unavailable'}</code>
+          <button className="btn" onClick={pick}>{t.workspace ? 'Change…' : 'Choose folder…'}</button>
+          {t.workspace && <button className="btn" onClick={() => patch({ tools: { workspace: '' } })}>Clear</button>}
+        </div>
+        <span className="hint">
+          File tools can read here freely and write only here. Reading anything outside it always asks. Shell commands start here but are <b>not sandboxed</b>.
+        </span>
+      </div>
+
+      <div className="form-block">
+        <b>Permissions</b>
+        <table className="perm">
+          <tbody>
+            {TOOL_META.map((m) => (
+              <tr key={m.name} className={m.needsWorkspace && !t.workspace ? 'dim' : ''}>
+                <td>
+                  <div>{m.label} <span className={`risk risk-${m.risk}`}>{m.risk}</span></div>
+                  <div className="hint">{m.description}</div>
+                </td>
+                <td>
+                  <select
+                    value={policy(m.name, m.defaultPolicy)}
+                    onChange={(e) => patch({ tools: { policies: { [m.name]: e.target.value as ToolPolicy } } })}
+                  >
+                    <option value="ask">Ask each time</option>
+                    <option value="allow">Always allow</option>
+                    <option value="deny">Disabled</option>
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <span className="hint warn">
+          “Always allow” on shell commands or web fetches lets the model act without asking — including after reading untrusted content (a web page or file can contain hidden instructions).
+        </span>
       </div>
     </div>
   )

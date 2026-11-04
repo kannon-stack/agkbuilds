@@ -16,6 +16,7 @@ const api: Api = {
     send: (req) => invoke('chat:send', req),
     regenerate: (req) => invoke('chat:regenerate', req),
     stop: (id) => invoke('chat:stop', id),
+    decide: (callId, decision) => invoke('chat:decide', callId, decision),
     onEvent: (cb) => {
       const listener = (_: unknown, e: ChatEvent) => cb(e)
       ipcRenderer.on('chat:event', listener)
@@ -26,7 +27,8 @@ const api: Api = {
     get: () => invoke('settings:get'),
     update: (patch) => invoke('settings:update', patch),
     saveProvider: (input) => invoke('settings:saveProvider', input),
-    removeProvider: (id) => invoke('settings:removeProvider', id)
+    removeProvider: (id) => invoke('settings:removeProvider', id),
+    pickWorkspace: () => invoke('settings:pickWorkspace')
   },
   models: {
     list: (providerId) => invoke('models:list', providerId),

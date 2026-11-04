@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModelPicker } from './ModelPicker'
+import { useStore } from '../store'
 
 interface Props {
   generating: boolean
@@ -11,6 +12,9 @@ interface Props {
 export function Composer({ generating, disabled, onSend, onStop }: Props) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
+  const tools = useStore((s) => s.settings?.tools)
+  const openSettings = useStore((s) => s.openSettings)
+  const folder = tools?.workspace.split(/[\\/]/).filter(Boolean).pop()
 
   // Auto-grow up to ~40% of the viewport.
   useEffect(() => {
@@ -45,7 +49,16 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
           }}
         />
         <div className="composer-row">
-          <ModelPicker />
+          <div className="composer-left">
+            <ModelPicker />
+            <button
+              className={`chip ${tools?.enabled ? 'on' : ''}`}
+              onClick={() => openSettings(true, 'tools')}
+              title={tools?.enabled ? `Tools enabled. Workspace: ${tools.workspace || 'none chosen'}` : 'Tools are off'}
+            >
+              🛠 {tools?.enabled ? (folder ?? 'no folder') : 'Tools off'}
+            </button>
+          </div>
           {generating ? (
             <button className="send stop" onClick={onStop} aria-label="Stop generating" title="Stop">
               ■

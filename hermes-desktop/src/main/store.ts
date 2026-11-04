@@ -10,7 +10,8 @@ import type {
   ProviderRecord,
   Settings,
   SettingsPatch,
-  ThemeSetting
+  ThemeSetting,
+  ToolSettings
 } from '../shared/types'
 
 /**
@@ -25,6 +26,7 @@ interface SettingsFile {
   systemPrompt: string
   temperature: number
   theme: ThemeSetting
+  tools: ToolSettings
 }
 
 const DEFAULT_PROVIDER: ProviderRecord = {
@@ -39,7 +41,8 @@ const DEFAULTS: SettingsFile = {
   activeProviderId: DEFAULT_PROVIDER.id,
   systemPrompt: 'You are a helpful assistant.',
   temperature: 0.7,
-  theme: 'system'
+  theme: 'system',
+  tools: { enabled: true, workspace: '', policies: {} }
 }
 
 let root = ''
@@ -93,6 +96,7 @@ export function decryptKey(rec: ProviderRecord): string | undefined {
 async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
+  merged.tools = { ...DEFAULTS.tools, ...(f?.tools ?? {}), policies: { ...(f?.tools?.policies ?? {}) } }
   if (!merged.providers?.length) merged.providers = [DEFAULT_PROVIDER]
   if (!merged.providers.some((p) => p.id === merged.activeProviderId)) {
     merged.activeProviderId = merged.providers[0].id
@@ -127,6 +131,9 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   if (patch.systemPrompt !== undefined) next.systemPrompt = patch.systemPrompt
   if (patch.temperature !== undefined) next.temperature = Math.min(2, Math.max(0, patch.temperature))
   if (patch.theme !== undefined) next.theme = patch.theme
+  if (patch.tools) {
+    next.tools = { ...f.tools, ...patch.tools, policies: { ...f.tools.policies, ...(patch.tools.policies ?? {}) } }
+  }
   await writeJson(settingsPath(), next)
   return toSettings(next)
 }

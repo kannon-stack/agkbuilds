@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { fetchModels, parsePayload, splitSSE, streamChat } from '../src/main/openai'
+import { fetchModels, parsePayload, splitSSE, streamChat, ToolCallAccumulator, type StreamEvent } from '../src/main/openai'
 
 describe('splitSSE', () => {
   it('splits complete events and keeps the partial tail', () => {
@@ -44,10 +44,15 @@ beforeEach(async () => {
 })
 afterEach(() => new Promise<void>((r) => server.close(() => r())))
 
-const collect = async (g: AsyncGenerator<string>) => {
+const collect = async (g: AsyncGenerator<StreamEvent>) => {
   let out = ''
-  for await (const t of g) out += t
+  for await (const e of g) if (e.type === 'text') out += e.text
   return out
+}
+const events = async (g: AsyncGenerator<StreamEvent>) => {
+  const all: StreamEvent[] = []
+  for await (const e of g) all.push(e)
+  return all
 }
 
 describe('streamChat', () => {
@@ -108,12 +113,74 @@ describe('streamChat', () => {
     const got: string[] = []
     const run = (async () => {
       for await (const t of streamChat({ baseUrl: base, model: 'm', messages: [], signal: ctl.signal })) {
-        got.push(t)
+        if (t.type === 'text') got.push(t.text)
         ctl.abort()
       }
     })()
     await expect(run).rejects.toMatchObject({ name: 'AbortError' })
     expect(got).toEqual(['a'])
+  })
+})
+
+describe('ToolCallAccumulator', () => {
+  it('merges fragments by index', () => {
+    const a = new ToolCallAccumulator()
+    a.add([{ index: 0, id: 'c1', name: 'read_file', args: '{"pa' }])
+    a.add([{ index: 0, args: 'th":"a.txt"}' }])
+    a.add([{ index: 1, id: 'c2', name: 'list_dir', args: '{}' }])
+    expect(a.result()).toEqual([
+      { id: 'c1', name: 'read_file', arguments: '{"path":"a.txt"}' },
+      { id: 'c2', name: 'list_dir', arguments: '{}' }
+    ])
+  })
+  it('handles providers that omit index and send whole calls', () => {
+    const a = new ToolCallAccumulator()
+    a.add([{ id: 'x', name: 'a', args: '{}' }])
+    a.add([{ id: 'y', name: 'b', args: '{"k":1}' }])
+    expect(a.result().map((c) => c.name)).toEqual(['a', 'b'])
+  })
+  it('synthesizes ids and default args when missing', () => {
+    const a = new ToolCallAccumulator()
+    a.add([{ index: 0, name: 'noargs' }])
+    const [c] = a.result()
+    expect(c.id).toMatch(/^call_/)
+    expect(c.arguments).toBe('{}')
+  })
+})
+
+describe('streamChat tool calls', () => {
+  it('sends tool defs and yields assembled tool_calls after text', async () => {
+    let body: any
+    handler = (req, res) => {
+      let raw = ''
+      req.on('data', (c) => (raw += c))
+      req.on('end', () => {
+        body = JSON.parse(raw)
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+        const d = (delta: unknown) => `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`
+        res.write(d({ content: 'Let me look. ' }))
+        res.write(d({ tool_calls: [{ index: 0, id: 'call_1', function: { name: 'read_file', arguments: '' } }] }))
+        res.write(d({ tool_calls: [{ index: 0, function: { arguments: '{"path":' } }] }))
+        res.write(d({ tool_calls: [{ index: 0, function: { arguments: '"a.txt"}' } }] }))
+        res.end('data: [DONE]\n\n')
+      })
+    }
+    const tools = [{ type: 'function' as const, function: { name: 'read_file', description: 'd', parameters: {} } }]
+    const evs = await events(streamChat({ baseUrl: base, model: 'm', messages: [], tools }))
+    expect(body.tools).toEqual(tools)
+    expect(evs).toEqual([
+      { type: 'text', text: 'Let me look. ' },
+      { type: 'tool_calls', calls: [{ id: 'call_1', name: 'read_file', arguments: '{"path":"a.txt"}' }] }
+    ])
+  })
+
+  it('adds a hint when a 400 follows a request that included tools', async () => {
+    handler = (_req, res) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end('{"error":{"message":"tools not supported"}}')
+    }
+    const tools = [{ type: 'function' as const, function: { name: 't', description: 'd', parameters: {} } }]
+    await expect(events(streamChat({ baseUrl: base, model: 'm', messages: [], tools }))).rejects.toThrow(/turn tools off/)
   })
 })
 
