@@ -77,12 +77,17 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
         <span className={`tool-icon ${call.status === 'running' ? 'spin' : ''}`} aria-hidden>
           {st.icon}
         </span>
-        <span className="tool-name">{meta?.label ?? call.name}</span>
+        <span className="tool-name">{call.label ?? meta?.label ?? call.name}</span>
         <span className="tool-sum">{call.summary ?? call.name}</span>
         <span className="tool-status">{st.label}</span>
       </summary>
       <div className="tool-body">
         <Preview call={call} />
+        {awaiting && call.external && (
+          <div className="tool-notice">
+            External MCP tool: it runs inside its server process with that server's own permissions, not Talaria's workspace limits.
+          </div>
+        )}
         {awaiting && (
           <div className="tool-approve" role="group" aria-label="Approve tool call">
             <button className="btn primary" onClick={() => decide(call.id, 'allow')}>

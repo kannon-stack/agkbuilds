@@ -5,6 +5,8 @@ import type { ConnectionResult } from '../shared/types'
 import * as store from './store'
 import * as chat from './chat'
 import { fetchModels } from './openai'
+import { mcp } from './mcp/instance'
+import { parseImport } from './mcp/util'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
@@ -58,6 +60,12 @@ async function testConnection(baseUrl: string, apiKey?: string): Promise<Connect
   }
 }
 
+/** Push the saved MCP config to the manager (connects/disconnects as needed). */
+async function syncMcp() {
+  const [records, settings] = await Promise.all([store.getMcpRecords(), store.getSettings()])
+  mcp.sync(records, settings.tools.workspace)
+}
+
 function registerIpc() {
   const h = ipcMain.handle.bind(ipcMain)
   h('conversations:list', () => store.listConversations())
@@ -96,6 +104,20 @@ function registerIpc() {
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
   h('settings:removeProvider', (_e, id: string) => store.removeProvider(id))
+  h('mcp:status', () => mcp.status())
+  h('mcp:save', async (_e, input) => {
+    const s = await store.saveMcpServer(input)
+    await syncMcp()
+    return s
+  })
+  h('mcp:remove', async (_e, id: string) => {
+    const s = await store.removeMcpServer(id)
+    await syncMcp()
+    return s
+  })
+  h('mcp:restart', (_e, id: string) => mcp.restart(id))
+  h('mcp:parseImport', (_e, text: string) => parseImport(String(text)))
+
   h('settings:pickWorkspace', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const opts = { title: 'Choose workspace folder', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] }
@@ -133,10 +155,21 @@ if (!app.requestSingleInstanceLock()) {
     await store.pruneEmptyConversations()
     nativeTheme.themeSource = (await store.getSettings()).theme
     registerIpc()
+    mcp.onStatus = (status) => BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('mcp:status', status))
+    void syncMcp() // connect enabled servers in the background
     createWindow()
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
+  })
+
+  // Make sure local MCP servers (child processes) never outlive the app.
+  let quitting = false
+  app.on('before-quit', (e) => {
+    if (quitting) return
+    e.preventDefault()
+    quitting = true
+    void mcp.closeAll().finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import type { ConnectionResult, Provider, ThemeSetting } from '../../../shared/types'
+import { McpSettings } from './McpSettings'
 import { TOOL_META, type ToolPolicy } from '../../../shared/toolMeta'
 
-type Tab = 'general' | 'providers' | 'tools'
+type Tab = 'general' | 'providers' | 'tools' | 'mcp'
 
 export function SettingsModal() {
   const { settings, setSettings, openSettings, loadModels, settingsTab } = useStore()
@@ -31,9 +32,9 @@ export function SettingsModal() {
           </button>
         </div>
         <div className="tabs">
-          {(['providers', 'tools', 'general'] as Tab[]).map((t) => (
+          {(['providers', 'tools', 'mcp', 'general'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : 'Providers'}
+              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : 'Providers'}
             </button>
           ))}
         </div>
@@ -42,6 +43,8 @@ export function SettingsModal() {
             <General />
           ) : tab === 'tools' ? (
             <Tools />
+          ) : tab === 'mcp' ? (
+            <McpSettings />
           ) : (
             <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
           )}

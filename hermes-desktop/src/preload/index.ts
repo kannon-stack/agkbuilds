@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Api, ChatEvent } from '../shared/types'
+import type { McpServerStatus } from '../shared/mcp'
 
 const invoke = <T>(channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args) as Promise<T>
 
@@ -29,6 +30,18 @@ const api: Api = {
     saveProvider: (input) => invoke('settings:saveProvider', input),
     removeProvider: (id) => invoke('settings:removeProvider', id),
     pickWorkspace: () => invoke('settings:pickWorkspace')
+  },
+  mcp: {
+    status: () => invoke('mcp:status'),
+    save: (input) => invoke('mcp:save', input),
+    remove: (id) => invoke('mcp:remove', id),
+    restart: (id) => invoke('mcp:restart', id),
+    parseImport: (text) => invoke('mcp:parseImport', text),
+    onStatus: (cb) => {
+      const listener = (_: unknown, s: McpServerStatus[]) => cb(s)
+      ipcRenderer.on('mcp:status', listener)
+      return () => ipcRenderer.removeListener('mcp:status', listener)
+    }
   },
   models: {
     list: (providerId) => invoke('models:list', providerId),

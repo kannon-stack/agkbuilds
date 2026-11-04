@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
-import { MAX_TOOL_STEPS } from '../shared/toolMeta'
+import { MAX_TOOL_STEPS, metaFor } from '../shared/toolMeta'
 import type { ChatEvent, Conversation, Message, ToolCall, ToolDecision } from '../shared/types'
 import { streamChat, type ParsedToolCall, type WireMessage } from './openai'
 import { activeTools, authorize, getTool, systemNote, toToolDefs, ToolError } from './tools'
+import { mcp } from './mcp/instance'
 import { decryptKey, getConversation, getProviderRecord, getSettings, saveConversation } from './store'
 
 /** Active generations, keyed by conversation id. One at a time per conversation. */
@@ -98,7 +99,10 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
   if (!provider) return end('error', 'No provider configured. Open Settings to add one.')
   if (!useModel) return end('error', 'No model selected. Pick one in the model menu or set a default in Settings.')
 
-  const tools = activeTools(settings.tools)
+  // Give servers still starting up (e.g. right after launch) a moment so the first message can use them.
+  await mcp.settled(4000)
+  const extra = mcp.tools()
+  const tools = activeTools(settings.tools, extra)
   const toolDefs = toToolDefs(tools)
   const system = [conv.systemPrompt ?? settings.systemPrompt, systemNote(tools, settings.tools.workspace)].filter(Boolean).join('\n\n')
   const toolCtx = { workspace: settings.tools.workspace, signal: ctl.signal }
@@ -166,7 +170,7 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
   }
 
   async function runToolCall(call: ToolCall, assistant: Message) {
-    const tool = getTool(call.name)
+    const tool = getTool(call.name, extra)
     let args: any
     const fail = (status: 'error' | 'denied', msg: string) => {
       call.status = status
@@ -175,7 +179,7 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
     }
 
     if (!tool) return fail('error', `Unknown tool "${call.name}".`)
-    if (!activeTools(settings.tools).some((t) => t.name === tool.name)) return fail('denied', `The "${call.name}" tool is disabled.`)
+    if (!tools.some((t) => t.name === tool.name)) return fail('denied', `The "${call.name}" tool is disabled.`)
     try {
       args = JSON.parse(call.arguments || '{}')
       if (args === null || typeof args !== 'object' || Array.isArray(args)) throw new Error('not an object')
@@ -183,6 +187,8 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
       return fail('error', 'Invalid arguments: expected a JSON object.')
     }
     call.summary = tool.describe(args)
+    call.label = tool.label ?? metaFor(tool.name)?.label
+    call.external = tool.external
     try {
       await tool.validate?.(args, toolCtx)
     } catch (e) {

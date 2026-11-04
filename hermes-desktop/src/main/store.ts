@@ -13,6 +13,7 @@ import type {
   ThemeSetting,
   ToolSettings
 } from '../shared/types'
+import type { McpServer, McpServerInput } from '../shared/mcp'
 
 /**
  * File-backed storage. One JSON file per conversation + settings.json.
@@ -27,6 +28,7 @@ interface SettingsFile {
   temperature: number
   theme: ThemeSetting
   tools: ToolSettings
+  mcpServers: McpServerRecord[]
 }
 
 const DEFAULT_PROVIDER: ProviderRecord = {
@@ -42,7 +44,8 @@ const DEFAULTS: SettingsFile = {
   systemPrompt: 'You are a helpful assistant.',
   temperature: 0.7,
   theme: 'system',
-  tools: { enabled: true, workspace: '', policies: {} }
+  tools: { enabled: true, workspace: '', policies: {} },
+  mcpServers: []
 }
 
 let root = ''
@@ -74,21 +77,41 @@ async function readJson<T>(file: string): Promise<T | null> {
 
 // ---------- API key handling (main process only) ----------
 
-function encryptKey(plain: string): NonNullable<ProviderRecord['apiKey']> {
+export type Secret = { encrypted: boolean; value: string }
+
+function encryptKey(plain: string): Secret {
   if (safeStorage.isEncryptionAvailable()) {
     return { encrypted: true, value: safeStorage.encryptString(plain).toString('base64') }
   }
   return { encrypted: false, value: plain }
 }
 
-export function decryptKey(rec: ProviderRecord): string | undefined {
-  if (!rec.apiKey) return undefined
-  if (!rec.apiKey.encrypted) return rec.apiKey.value
+export function decryptSecret(s?: Secret): string | undefined {
+  if (!s) return undefined
+  if (!s.encrypted) return s.value
   try {
-    return safeStorage.decryptString(Buffer.from(rec.apiKey.value, 'base64'))
+    return safeStorage.decryptString(Buffer.from(s.value, 'base64'))
   } catch {
     return undefined
   }
+}
+
+export const decryptKey = (rec: ProviderRecord) => decryptSecret(rec.apiKey)
+
+// ---------- MCP server records ----------
+
+export interface McpServerRecord {
+  id: string
+  name: string
+  enabled: boolean
+  transport: McpServer['transport']
+  command?: string
+  args?: string[]
+  url?: string
+  env: Record<string, Secret>
+  headers: Record<string, Secret>
+  policy: McpServer['policy']
+  toolPolicies: Record<string, McpServer['policy']>
 }
 
 // ---------- Settings ----------
@@ -97,6 +120,7 @@ async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
   merged.tools = { ...DEFAULTS.tools, ...(f?.tools ?? {}), policies: { ...(f?.tools?.policies ?? {}) } }
+  merged.mcpServers = (f?.mcpServers ?? []).map((r) => ({ ...r, env: r.env ?? {}, headers: r.headers ?? {}, toolPolicies: r.toolPolicies ?? {} }))
   if (!merged.providers?.length) merged.providers = [DEFAULT_PROVIDER]
   if (!merged.providers.some((p) => p.id === merged.activeProviderId)) {
     merged.activeProviderId = merged.providers[0].id
@@ -109,8 +133,23 @@ const toPublic = (p: ProviderRecord): Provider => {
   return { ...rest, hasKey: !!apiKey?.value, keyPlain: !!apiKey?.value && !apiKey.encrypted }
 }
 
+const toPublicMcp = (r: McpServerRecord): McpServer => ({
+  id: r.id,
+  name: r.name,
+  enabled: r.enabled,
+  transport: r.transport,
+  command: r.command,
+  args: r.args,
+  url: r.url,
+  envKeys: Object.keys(r.env),
+  headerKeys: Object.keys(r.headers),
+  policy: r.policy,
+  toolPolicies: r.toolPolicies
+})
+
 function toSettings(f: SettingsFile): Settings {
-  return { ...f, providers: f.providers.map(toPublic) }
+  const { mcpServers, ...rest } = f
+  return { ...rest, providers: f.providers.map(toPublic), mcpServers: mcpServers.map(toPublicMcp) }
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -220,4 +259,52 @@ export async function pruneEmptyConversations(): Promise<void> {
     const c = await readJson<Conversation>(file)
     if (c && c.messages.length === 0) await fs.rm(file, { force: true })
   }
+}
+
+// ---------- MCP server CRUD ----------
+
+export async function getMcpRecords(): Promise<McpServerRecord[]> {
+  return (await loadSettingsFile()).mcpServers
+}
+
+function applySecrets(target: Record<string, Secret>, set?: Record<string, string>, remove?: string[]) {
+  for (const k of remove ?? []) delete target[k]
+  for (const [k, v] of Object.entries(set ?? {})) {
+    const key = k.trim()
+    if (key && v !== '') target[key] = encryptKey(v)
+  }
+}
+
+export async function saveMcpServer(input: McpServerInput): Promise<Settings> {
+  const f = await loadSettingsFile()
+  const existing = input.id ? f.mcpServers.find((s) => s.id === input.id) : undefined
+  const rec: McpServerRecord = existing ?? {
+    id: randomUUID(), name: '', enabled: true, transport: input.transport, env: {}, headers: {}, policy: 'ask', toolPolicies: {}
+  }
+  rec.name = input.name.trim() || 'MCP server'
+  rec.enabled = input.enabled
+  rec.transport = input.transport
+  rec.policy = input.policy
+  if (input.toolPolicies) rec.toolPolicies = input.toolPolicies
+  if (input.transport === 'stdio') {
+    rec.command = input.command?.trim() ?? ''
+    rec.args = (input.args ?? []).map(String)
+    rec.url = undefined
+  } else {
+    rec.url = input.url?.trim() ?? ''
+    rec.command = undefined
+    rec.args = undefined
+  }
+  applySecrets(rec.env, input.envSet, input.envRemove)
+  applySecrets(rec.headers, input.headersSet, input.headersRemove)
+  if (!existing) f.mcpServers.push(rec)
+  await writeJson(settingsPath(), f)
+  return toSettings(f)
+}
+
+export async function removeMcpServer(id: string): Promise<Settings> {
+  const f = await loadSettingsFile()
+  f.mcpServers = f.mcpServers.filter((s) => s.id !== id)
+  await writeJson(settingsPath(), f)
+  return toSettings(f)
 }

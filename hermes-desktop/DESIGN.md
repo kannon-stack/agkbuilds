@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 **streaming chat + history**, **provider/model switching + settings**, and **tool use**
-(files, shell, web) with approvals. Memory/skills and theming are designed-for but not built.
+(files, shell, web) with approvals, and **MCP servers** as an extension point for more tools. Memory/skills and theming are designed-for but not built.
 
 > Rename the app in one place: `APP_NAME` in `src/shared/types.ts` (+ `productName` in `package.json`).
 
@@ -88,6 +88,33 @@ but prompt injection from files/web pages is a real risk — that's why web fetc
 commands ask by default and the Settings page warns about "Always allow". Tool code lives in
 `src/main/tools/` and has no Electron dependency (unit-tested in plain Node).
 
+## MCP (Model Context Protocol)
+
+Servers are configured in **Settings → MCP** and their tools join the built-ins in the same
+agent loop, the same approval cards and the same policy system. Uses the official
+`@modelcontextprotocol/sdk` client in the main process.
+
+- **Transports:** local command (stdio), Streamable HTTP, and legacy SSE. Servers connect in the
+  background at launch; the first chat message waits up to 4 s for ones still starting.
+- **Add servers** by form, or **Import JSON** — paste the `{ "mcpServers": {…} }` block from any
+  server README (Claude Desktop / Cursor format). Import shows a preview and per-entry errors first.
+- **Naming:** the model sees `server__tool` (sanitized to `[a-zA-Z0-9_-]`, ≤64 chars, unique across
+  servers). Schemas are passed through (repaired to a top-level object if missing).
+- **Permissions:** default is *ask* for every MCP tool. Each server has a default policy and each tool can
+  override it (*server default / ask / always allow / disabled*). The master switch in Tools gates MCP
+  as well. Approval cards show the server, the exact arguments, and an "external MCP tool" notice —
+  MCP tools run in the server's process with *its* permissions, outside the workspace sandbox rules.
+- **Secrets:** env vars (stdio) and headers (HTTP/SSE) are stored via the same `safeStorage` path as API
+  keys and are write-only in the UI — the renderer only ever receives key *names*.
+- **Lifecycle:** `tools/list_changed` is honored live; per-server status (connecting / connected / error
+  with the server's own stderr) streams to the UI; children are killed on disable, remove, restart and
+  quit. Tool calls time out at 120 s and are cancelled by **Stop**.
+- **Results:** text is passed through (≤30 k chars); `isError` results show as failed cards; images/audio
+  are described, not displayed.
+
+Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pure helpers),
+`src/renderer/src/components/McpSettings.tsx`. Tests use a real SDK-based fixture server over stdio and HTTP.
+
 ## UI
 
 - **Layout:** left sidebar (new chat, search, history grouped Today/Yesterday/7 days/Older,
@@ -113,15 +140,19 @@ The seams already exist so these are additive:
    `streamChat` shape; provider `kind` field in `ProviderRecord`.
 3. **Per-chat settings** — `Conversation.systemPrompt` is already honored by `chat.ts`; needs UI. Add presets ("personas").
 4. **Storage → SQLite** — swap `store.ts`; unlocks full-text search over message bodies.
-5. **More tools** — add a `ToolImpl` to `src/main/tools/` + a row in `shared/toolMeta.ts`.
-   MCP servers fit the same interface (adapter that turns MCP tools into `ToolImpl`s).
-   Also: per-conversation workspace, command allow/deny patterns, background processes.
+5. **More tools** — add a `ToolImpl` to `src/main/tools/` + a row in `shared/toolMeta.ts`, or just connect an MCP server (done).
+   Also: MCP OAuth, resources/prompts, per-conversation workspace, command allow/deny patterns, background processes.
 6. **Memory & skills** — stored beside conversations; injected by `chat.ts` when building the wire messages.
 7. **Plugins/commands** — slash-command registry in the composer.
 
 ## Known limitations (v1)
 
 - Text only: no attachments/images, no message editing/branching, no export.
+- MCP: tools only (no resources, prompts, sampling or elicitation); no OAuth sign-in for remote servers
+  (use servers that take a token header); server `instructions` aren't forwarded to the model; images
+  aren't rendered; local servers keep the working directory they started with (restart after changing
+  workspace). When the app is launched from the macOS Dock/Windows Start menu, `PATH` may lack tools like
+  `npx`/`uvx` that a terminal has — use an absolute path to the command if a server fails to start.
 - Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
 - No context-window management — the full history is sent each turn.
 - Reasoning/"thinking" deltas from providers (e.g. `reasoning_content`) are ignored, not shown.

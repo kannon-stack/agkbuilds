@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { McpServerStatus } from '../../shared/mcp'
 import type {
   ChatEvent,
   ConnectionResult,
@@ -18,7 +19,8 @@ interface State {
   models: ConnectionResult | null
   modelsLoading: boolean
   settingsOpen: boolean
-  settingsTab: 'providers' | 'general' | 'tools'
+  settingsTab: 'providers' | 'general' | 'tools' | 'mcp'
+  mcpStatus: McpServerStatus[]
   toast: string | null
 
   init(): Promise<void>
@@ -35,7 +37,7 @@ interface State {
   loadModels(providerId?: string): Promise<void>
   applyEvent(e: ChatEvent): void
   setSettings(s: Settings): void
-  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools'): void
+  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools' | 'mcp'): void
   showToast(msg: string): void
 }
 
@@ -51,11 +53,14 @@ export const useStore = create<State>((set, get) => ({
   modelsLoading: false,
   settingsOpen: false,
   settingsTab: 'providers',
+  mcpStatus: [],
   toast: null,
 
   async init() {
     const api = window.api
     api.chat.onEvent((e) => get().applyEvent(e))
+    api.mcp.onStatus((mcpStatus) => set({ mcpStatus }))
+    void api.mcp.status().then((mcpStatus) => set({ mcpStatus }))
     const [settings, conversations] = await Promise.all([api.settings.get(), api.conversations.list()])
     set({ settings, conversations, ready: true })
     // Open the most recent chat, or a fresh one.

@@ -1,6 +1,7 @@
 // Types shared by main, preload and renderer. Keep this file dependency-free.
 
 import type { ToolPolicy } from './toolMeta'
+import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
 
@@ -16,6 +17,10 @@ export interface ToolCall {
   status: ToolStatus
   /** Human-readable one-liner, e.g. "$ ls -la". */
   summary?: string
+  /** Display name, e.g. "Run shell commands" or "github · create_issue". */
+  label?: string
+  /** True for tools provided by an external MCP server. */
+  external?: boolean
   /** Text returned to the model (and shown in the UI). */
   result?: string
 }
@@ -86,9 +91,10 @@ export interface Settings {
   temperature: number
   theme: ThemeSetting
   tools: ToolSettings
+  mcpServers: McpServer[]
 }
 
-export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers'>> & {
   tools?: Partial<ToolSettings>
 }
 
@@ -153,6 +159,15 @@ export interface Api {
     removeProvider(id: string): Promise<Settings>
     /** Opens a native folder picker; returns null if cancelled. */
     pickWorkspace(): Promise<string | null>
+  }
+  mcp: {
+    status(): Promise<McpServerStatus[]>
+    save(input: McpServerInput): Promise<Settings>
+    remove(id: string): Promise<Settings>
+    restart(id: string): Promise<void>
+    /** Parse a pasted `{ "mcpServers": {...} }` config (Claude Desktop / Cursor format). */
+    parseImport(text: string): Promise<McpImportResult>
+    onStatus(cb: (s: McpServerStatus[]) => void): () => void
   }
   models: {
     list(providerId: string): Promise<ConnectionResult>
