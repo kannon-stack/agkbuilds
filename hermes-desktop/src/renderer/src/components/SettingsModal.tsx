@@ -3,9 +3,11 @@ import { useStore } from '../store'
 import type { ConnectionResult, Provider } from '../../../shared/types'
 import { McpSettings } from './McpSettings'
 import { AppearanceSettings } from './AppearanceSettings'
+import { MemorySettings } from './MemorySettings'
+import { SkillsSettings } from './SkillsSettings'
 import { TOOL_META, type ToolPolicy } from '../../../shared/toolMeta'
 
-type Tab = 'general' | 'providers' | 'tools' | 'mcp' | 'appearance'
+type Tab = 'general' | 'providers' | 'tools' | 'mcp' | 'appearance' | 'memory' | 'skills'
 
 export function SettingsModal() {
   const { settings, setSettings, openSettings, loadModels, settingsTab } = useStore()
@@ -33,9 +35,9 @@ export function SettingsModal() {
           </button>
         </div>
         <div className="tabs">
-          {(['providers', 'tools', 'mcp', 'appearance', 'general'] as Tab[]).map((t) => (
+          {(['providers', 'tools', 'memory', 'skills', 'mcp', 'appearance', 'general'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : t === 'appearance' ? 'Appearance' : 'Providers'}
+              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : t === 'appearance' ? 'Appearance' : t === 'memory' ? 'Memory' : t === 'skills' ? 'Skills' : 'Providers'}
             </button>
           ))}
         </div>
@@ -48,6 +50,10 @@ export function SettingsModal() {
             <McpSettings />
           ) : tab === 'appearance' ? (
             <AppearanceSettings />
+          ) : tab === 'memory' ? (
+            <MemorySettings />
+          ) : tab === 'skills' ? (
+            <SkillsSettings />
           ) : (
             <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
           )}
@@ -58,9 +64,9 @@ export function SettingsModal() {
 }
 
 function Tools() {
-  const { settings, setSettings } = useStore()
+  const { settings, patchSettings } = useStore()
   const t = settings!.tools
-  const patch = async (p: Parameters<typeof window.api.settings.update>[0]) => setSettings(await window.api.settings.update(p))
+  const patch = (p: Parameters<typeof window.api.settings.update>[0]) => patchSettings(p)
   const pick = async () => {
     const dir = await window.api.settings.pickWorkspace()
     if (dir) await patch({ tools: { workspace: dir } })

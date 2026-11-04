@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 **streaming chat + history**, **provider/model switching + settings**, and **tool use**
-(files, shell, web) with approvals, **MCP servers** as an extension point for more tools, and **theming**. Memory/skills are designed-for but not built.
+(files, shell, web) with approvals, **MCP servers** as an extension point for more tools, **theming**, and **memory + skills**.
 
 > Rename the app in one place: `APP_NAME` in `src/shared/types.ts` (+ `productName` in `package.json`).
 
@@ -115,6 +115,44 @@ agent loop, the same approval cards and the same policy system. Uses the officia
 Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pure helpers),
 `src/renderer/src/components/McpSettings.tsx`. Tests use a real SDK-based fixture server over stdio and HTTP.
 
+## Memory & skills
+
+### Memory — durable notes across chats
+- **What:** short one-line notes (≤500 chars, ≤200 total) in `memory.json` (owner-only file). Each has a source
+  (*you* / *model*) and a scope (*all chats* or *this project* = bound to the workspace folder).
+- **How the model sees them:** a `## Memory` section in the system prompt, newest first, ids included, within a
+  6 000-char budget (the UI warns if older notes don't fit). Framed as *notes, not commands*; newlines are
+  collapsed so a note can't forge prompt structure.
+- **Writing:** you (Settings → Memory, or `/remember …` in the composer — instant, no model call) or the model via
+  `remember` / `forget`. **Model writes ask for approval by default**, and the card shows the exact text — a web page
+  or file the model read must not be able to plant persistent instructions silently. Secret-looking text
+  (API keys, tokens, `password: …`) is refused *before* any prompt, for both you and the model, because the file is
+  unencrypted. Exact duplicates (ignoring case/punctuation) aren't stored twice.
+- **Robustness:** writes are serialized (UI and tools can't lose each other's updates), saves are atomic, and an
+  unreadable `memory.json` is moved aside, never silently overwritten.
+
+### Skills — reusable instructions (open `SKILL.md` format)
+- **Format:** a folder with `SKILL.md` (YAML header `name` + `description`, markdown body) and optional bundled files.
+  Existing skills from other tools work as-is; unknown header keys survive edits.
+- **Progressive disclosure:** only a short catalog (name + description) is in the prompt. The model calls
+  `use_skill` to load the full text when a task matches, and `read_skill_file` for bundled files (confined to the skill
+  folder, symlink-aware). You can also invoke one directly: `/skill-name <input>` — the instructions are
+  snapshotted into that message, so history stays reproducible and it works with tools off.
+- **Sources:** *yours* (`<userData>/skills`), *created by AI* (`create_skill`, **asks for approval** and shows the full
+  instructions; tagged in the header), and *from this project* (`.talaria/skills`, `.claude/skills` in the workspace).
+- **Project skills are untrusted by default.** A cloned repo could ship instructions aimed at your model, so they stay
+  **off** until you review and enable them, and approval is **bound to a content hash** (SKILL.md + file list): if the
+  repo changes the skill, it drops out of the prompt immediately and the UI says "changed since you enabled it".
+  Symlinks inside workspace skill folders are ignored.
+- **UI:** Settings → Skills (create/edit/rename/delete, import a folder, open the folder, view instructions, per-skill
+  toggle) and a `/` menu in the composer (↑↓ Tab/Enter, Esc). Composer chips show 🧠 notes and ⚡ skills in use.
+- **Limits:** names `[a-z0-9-]`, description ≤1 024, body ≤50 000, SKILL.md ≤200 KB, imports ≤5 MB / 200 files.
+
+Code: `src/shared/{memory,skills}.ts` (pure helpers/prompt formatting), `src/main/memory.ts`,
+`src/main/skills/{parse,registry}.ts`, `src/main/tools/{memoryTools,skillTools}.ts`, UI in
+`MemorySettings.tsx` / `SkillsSettings.tsx` / `Composer.tsx`. Tools appear in Settings → Tools so each can be set to
+ask / always allow / disabled.
+
 ## Theming
 
 **Settings → Appearance.** Everything visual is a CSS variable set on `:root` by one pure function,
@@ -164,7 +202,7 @@ The seams already exist so these are additive:
 4. **Storage → SQLite** — swap `store.ts`; unlocks full-text search over message bodies.
 5. **More tools** — add a `ToolImpl` to `src/main/tools/` + a row in `shared/toolMeta.ts`, or just connect an MCP server (done).
    Also: MCP OAuth, resources/prompts, per-conversation workspace, command allow/deny patterns, background processes.
-6. **Memory & skills** — stored beside conversations; injected by `chat.ts` when building the wire messages.
+6. **Memory & skills** — done (see above). Possible next: semantic recall for large memories, automatic end-of-chat memory suggestions (with approval), skill sharing/export, per-conversation skill sets.
 7. **Plugins/commands** — slash-command registry in the composer.
 
 ## Known limitations (v1)
@@ -175,6 +213,7 @@ The seams already exist so these are additive:
   aren't rendered; local servers keep the working directory they started with (restart after changing
   workspace). When the app is launched from the macOS Dock/Windows Start menu, `PATH` may lack tools like
   `npx`/`uvx` that a terminal has — use an absolute path to the command if a server fails to start.
+- Memory & skills: all enabled notes are injected (no relevance ranking/embeddings), so keep notes short; the model only saves memories when it decides to (no background extraction); `allowed-tools`/`license` header keys are preserved but not enforced; skill scripts run only through `run_command` (with its approvals), never automatically; slash commands take free text, not structured arguments; no skill marketplace/sync.
 - Theming: fonts must already be installed (none are bundled); sidebar width and spacing aren't themable yet; no scheduled (time-of-day) theme switching.
 - Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
 - No context-window management — the full history is sent each turn.

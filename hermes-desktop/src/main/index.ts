@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { APP_NAME } from '../shared/types'
 import type { ConnectionResult } from '../shared/types'
@@ -8,6 +9,10 @@ import { fetchModels } from './openai'
 import { mcp } from './mcp/instance'
 import { parseImport } from './mcp/util'
 import { resolveAppearance } from '../shared/theme'
+import { initServices, services } from './services'
+import { MemoryError } from './memory'
+import { SkillError, summarize, withEnabled } from './skills/registry'
+import type { Result } from '../shared/types'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
@@ -78,6 +83,26 @@ async function syncMcp() {
   mcp.sync(records, settings.tools.workspace)
 }
 
+/** Run a service call, turning expected failures into { ok:false, error } for the UI. */
+async function guarded<T>(fn: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return { ok: true, value: await fn() }
+  } catch (e) {
+    if (e instanceof MemoryError || e instanceof SkillError) return { ok: false, error: e.message }
+    throw e
+  }
+}
+
+function broadcast(kind: 'memory' | 'skills') {
+  BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('data:changed', kind))
+}
+
+async function skillSummaries() {
+  const [settings] = await Promise.all([store.getSettings()])
+  const recs = await services.skills.scan(settings.tools.workspace)
+  return { recs, settings, list: recs.map((r) => summarize(r, settings.skills)) }
+}
+
 function registerIpc() {
   const h = ipcMain.handle.bind(ipcMain)
   h('conversations:list', () => store.listConversations())
@@ -118,6 +143,56 @@ function registerIpc() {
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
   h('settings:removeProvider', (_e, id: string) => store.removeProvider(id))
+  // ---- memory
+  h('memory:list', () => services.memory.list())
+  h('memory:add', async (_e, text: string, scope: 'global' | 'project') => {
+    const ws = (await store.getSettings()).tools.workspace
+    if (scope === 'project' && !ws) return { ok: false, error: 'Choose a workspace folder first (Settings → Tools) to save project notes.' } as Result<never>
+    return guarded(async () => (await services.memory.add(text, { source: 'user', workspace: scope === 'project' ? ws : undefined })).item)
+  })
+  h('memory:update', (_e, id: string, patch) => guarded(() => services.memory.update(id, patch)))
+  h('memory:remove', (_e, id: string) => guarded(async () => void (await services.memory.remove(id))))
+  h('memory:clear', () => services.memory.clear())
+
+  // ---- skills
+  h('skills:list', async () => (await skillSummaries()).list)
+  h('skills:get', async (_e, name: string) => {
+    const { recs, settings } = await skillSummaries()
+    const rec = recs.find((r) => r.name === name)
+    return rec ? { ...summarize(rec, settings.skills), body: rec.body } : null
+  })
+  h('skills:save', (_e, input) =>
+    guarded(async () => {
+      const rec = await services.skills.save(input, 'user', { overwrite: !!input.originalName })
+      const { settings } = await skillSummaries()
+      return summarize(rec, settings.skills)
+    })
+  )
+  h('skills:remove', (_e, name: string) => guarded(() => services.skills.remove(name)))
+  h('skills:setEnabled', (_e, name: string, enabled: boolean) =>
+    guarded(async () => {
+      const { recs, settings } = await skillSummaries()
+      const rec = recs.find((r) => r.name === name)
+      if (!rec) throw new SkillError(`No skill named "${name}".`)
+      if (rec.invalid) throw new SkillError('This skill is invalid and can’t be enabled.')
+      await store.updateSettings({ skills: withEnabled(rec, enabled, settings.skills) })
+    })
+  )
+  h('skills:import', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const opts = { title: 'Choose a skill folder (it must contain SKILL.md)', properties: ['openDirectory'] as 'openDirectory'[] }
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (r.canceled || !r.filePaths[0]) return null
+    return guarded(async () => {
+      const rec = await services.skills.importFolder(r.filePaths[0])
+      return summarize(rec, (await store.getSettings()).skills)
+    })
+  })
+  h('skills:openFolder', async () => {
+    await fsp.mkdir(services.skills.userDir, { recursive: true })
+    await shell.openPath(services.skills.userDir)
+  })
+
   h('mcp:status', () => mcp.status())
   h('mcp:save', async (_e, input) => {
     const s = await store.saveMcpServer(input)
@@ -166,6 +241,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setName(APP_NAME)
     await store.initStore()
+    initServices(app.getPath('userData'))
     await store.pruneEmptyConversations()
     nativeTheme.themeSource = (await store.getSettings()).theme
     registerIpc()

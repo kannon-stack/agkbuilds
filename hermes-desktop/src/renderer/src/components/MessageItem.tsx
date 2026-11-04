@@ -24,7 +24,10 @@ export function MessageItem({ message, streaming, isLast, continuation, onRegene
   if (isUser) {
     return (
       <div className="msg msg-user">
-        <div className="bubble">{message.content}</div>
+        <div className="bubble-col">
+          {message.skill && <span className="skill-chip" title="This message invoked a skill">⚡ {message.skill.name}</span>}
+          <div className="bubble">{message.content}</div>
+        </div>
       </div>
     )
   }

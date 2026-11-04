@@ -48,6 +48,29 @@ function Preview({ call }: { call: ToolCall }) {
           <pre className="tool-pre add">{clipText(String(a.new_string ?? ''), 1500)}</pre>
         </>
       )
+    case 'remember':
+      return (
+        <>
+          <div className="tool-label">Save to memory ({a.scope === 'project' ? 'this project only' : 'all chats'})</div>
+          <pre className="tool-pre">{String(a.text ?? '')}</pre>
+        </>
+      )
+    case 'forget':
+      return (
+        <>
+          <div className="tool-label">Delete this memory note</div>
+          <pre className="tool-pre del">{call.detail ?? `[${String(a.id)}]`}</pre>
+        </>
+      )
+    case 'create_skill':
+      return (
+        <>
+          <div className="tool-label">New skill <code>{String(a.name)}</code>{a.overwrite ? ' (replaces the existing one)' : ''}</div>
+          <pre className="tool-pre">{clipText(String(a.description ?? ''), 600)}</pre>
+          <div className="tool-label">Instructions</div>
+          <pre className="tool-pre">{clipText(String(a.instructions ?? ''), 3000)}</pre>
+        </>
+      )
     case 'web_fetch':
       return (
         <>
@@ -83,6 +106,13 @@ export function ToolCallCard({ call }: { call: ToolCall }) {
       </summary>
       <div className="tool-body">
         <Preview call={call} />
+        {awaiting && (call.name === 'remember' || call.name === 'create_skill') && (
+          <div className="tool-notice">
+            {call.name === 'remember'
+              ? 'Memory persists across chats and is shown to the model every time. Approve only notes you want kept.'
+              : 'Saved to your skills folder: it will be offered to the model in every future chat and as a /command.'}
+          </div>
+        )}
         {awaiting && call.external && (
           <div className="tool-notice">
             External MCP tool: it runs inside its server process with that server's own permissions, not Talaria's workspace limits.

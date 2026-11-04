@@ -1,10 +1,13 @@
 import { create } from 'zustand'
 import type { McpServerStatus } from '../../shared/mcp'
 import { sanitizeAppearance, type Appearance } from '../../shared/theme'
+import type { MemoryItem } from '../../shared/memory'
+import type { SkillSummary } from '../../shared/skills'
 import type { ThemeOverride } from './applyTheme'
 import type {
   ChatEvent,
   ConnectionResult,
+  SettingsPatch,
   Conversation,
   ConversationSummary,
   Settings,
@@ -21,7 +24,9 @@ interface State {
   models: ConnectionResult | null
   modelsLoading: boolean
   settingsOpen: boolean
-  settingsTab: 'providers' | 'general' | 'tools' | 'mcp' | 'appearance'
+  settingsTab: SettingsTab
+  memory: MemoryItem[]
+  skills: SkillSummary[]
   /** Unsaved colours from the theme editor, applied live. */
   previewTheme: ThemeOverride | null
   mcpStatus: McpServerStatus[]
@@ -41,12 +46,19 @@ interface State {
   loadModels(providerId?: string): Promise<void>
   applyEvent(e: ChatEvent): void
   setSettings(s: Settings): void
-  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools' | 'mcp' | 'appearance'): void
+  openSettings(open: boolean, tab?: SettingsTab): void
+  refreshMemory(): Promise<void>
+  refreshSkills(): Promise<void>
+  refreshSettings(): Promise<void>
+  /** Apply a settings change in the UI immediately, then persist it (UI keeps the saved result). */
+  patchSettings(patch: SettingsPatch): Promise<void>
   setPreviewTheme(p: ThemeOverride | null): void
   /** Apply an appearance change instantly and persist it (debounced). */
   updateAppearance(patch: Partial<Appearance>): void
   showToast(msg: string): void
 }
+
+export type SettingsTab = 'providers' | 'general' | 'tools' | 'mcp' | 'appearance' | 'memory' | 'skills'
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 let appearanceTimer: ReturnType<typeof setTimeout> | undefined
@@ -62,6 +74,8 @@ export const useStore = create<State>((set, get) => ({
   modelsLoading: false,
   settingsOpen: false,
   settingsTab: 'providers',
+  memory: [],
+  skills: [],
   previewTheme: null,
   mcpStatus: [],
   toast: null,
@@ -71,6 +85,9 @@ export const useStore = create<State>((set, get) => ({
     api.chat.onEvent((e) => get().applyEvent(e))
     api.mcp.onStatus((mcpStatus) => set({ mcpStatus }))
     void api.mcp.status().then((mcpStatus) => set({ mcpStatus }))
+    api.onDataChanged((kind) => void (kind === 'memory' ? get().refreshMemory() : get().refreshSkills()))
+    void get().refreshMemory()
+    void get().refreshSkills()
     const [settings, conversations] = await Promise.all([api.settings.get(), api.conversations.list()])
     set({ settings, conversations, ready: true })
     // Open the most recent chat, or a fresh one.
@@ -234,6 +251,32 @@ export const useStore = create<State>((set, get) => ({
 
   setSettings(settings) {
     set({ settings })
+  },
+  async refreshMemory() {
+    set({ memory: await window.api.memory.list() })
+  },
+  async refreshSkills() {
+    set({ skills: await window.api.skills.list() })
+  },
+  async patchSettings(patch) {
+    const cur = get().settings
+    if (cur) {
+      set({
+        settings: {
+          ...cur,
+          ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+          ...(patch.memory ? { memory: { ...cur.memory, ...patch.memory } } : {}),
+          ...(patch.skills ? { skills: { ...cur.skills, ...patch.skills } } : {}),
+          ...(patch.tools ? { tools: { ...cur.tools, ...patch.tools, policies: { ...cur.tools.policies, ...(patch.tools.policies ?? {}) } } } : {})
+        }
+      })
+    }
+    const saved = await window.api.settings.update(patch)
+    // Keep the appearance the user may have edited meanwhile (it has its own debounced save).
+    set((s) => ({ settings: s.settings ? { ...saved, appearance: s.settings.appearance } : saved }))
+  },
+  async refreshSettings() {
+    set({ settings: await window.api.settings.get() })
   },
   setPreviewTheme(previewTheme) {
     set({ previewTheme })

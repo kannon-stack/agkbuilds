@@ -14,6 +14,8 @@ import type {
   ToolSettings
 } from '../shared/types'
 import type { McpServer, McpServerInput } from '../shared/mcp'
+import type { MemorySettings } from '../shared/types'
+import type { SkillsSettings } from '../shared/skills'
 import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
 
 /**
@@ -31,6 +33,8 @@ interface SettingsFile {
   tools: ToolSettings
   mcpServers: McpServerRecord[]
   appearance: Appearance
+  memory: MemorySettings
+  skills: SkillsSettings
 }
 
 const DEFAULT_PROVIDER: ProviderRecord = {
@@ -48,7 +52,9 @@ const DEFAULTS: SettingsFile = {
   theme: 'system',
   tools: { enabled: true, workspace: '', policies: {} },
   mcpServers: [],
-  appearance: DEFAULT_APPEARANCE
+  appearance: DEFAULT_APPEARANCE,
+  memory: { enabled: true },
+  skills: { enabled: true, disabled: [], trusted: {} }
 }
 
 let root = ''
@@ -123,6 +129,8 @@ async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
   merged.tools = { ...DEFAULTS.tools, ...(f?.tools ?? {}), policies: { ...(f?.tools?.policies ?? {}) } }
+  merged.memory = { enabled: f?.memory?.enabled !== false }
+  merged.skills = cleanSkills(f?.skills)
   // Re-validate on every load: the file may be hand-edited or from an older version.
   merged.appearance = sanitizeAppearance(f?.appearance, DEFAULT_APPEARANCE)
   merged.mcpServers = (f?.mcpServers ?? []).map((r) => ({ ...r, env: r.env ?? {}, headers: r.headers ?? {}, toolPolicies: r.toolPolicies ?? {} }))
@@ -152,6 +160,16 @@ const toPublicMcp = (r: McpServerRecord): McpServer => ({
   toolPolicies: r.toolPolicies
 })
 
+/** Normalise (possibly hand-edited) skill settings: arrays of names, name→hash map. */
+function cleanSkills(raw: Partial<SkillsSettings> | undefined): SkillsSettings {
+  const names = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 500) : [])
+  const trusted: Record<string, string> = {}
+  if (raw?.trusted && typeof raw.trusted === 'object') {
+    for (const [k, v] of Object.entries(raw.trusted)) if (typeof v === 'string' && k.length <= 64) trusted[k] = v
+  }
+  return { enabled: raw?.enabled !== false, disabled: names(raw?.disabled), trusted }
+}
+
 function toSettings(f: SettingsFile): Settings {
   const { mcpServers, ...rest } = f
   return { ...rest, providers: f.providers.map(toPublic), mcpServers: mcpServers.map(toPublicMcp) }
@@ -175,6 +193,8 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   if (patch.systemPrompt !== undefined) next.systemPrompt = patch.systemPrompt
   if (patch.temperature !== undefined) next.temperature = Math.min(2, Math.max(0, patch.temperature))
   if (patch.theme !== undefined) next.theme = patch.theme
+  if (patch.memory?.enabled !== undefined) next.memory = { enabled: !!patch.memory.enabled }
+  if (patch.skills) next.skills = cleanSkills({ ...f.skills, ...patch.skills })
   if (patch.appearance) next.appearance = sanitizeAppearance(patch.appearance, f.appearance)
   if (patch.tools) {
     next.tools = { ...f.tools, ...patch.tools, policies: { ...f.tools.policies, ...(patch.tools.policies ?? {}) } }

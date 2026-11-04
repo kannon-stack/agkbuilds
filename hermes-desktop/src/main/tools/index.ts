@@ -5,13 +5,32 @@ import type { ToolDef } from '../openai'
 import { editFile, listDir, readFile, writeFile } from './fsTools'
 import { runCommand } from './exec'
 import { webFetch } from './web'
+import { forget, remember } from './memoryTools'
+import { createSkill, readSkillFile, useSkill } from './skillTools'
 import type { ToolContext, ToolImpl } from './types'
 
 export { ToolError, clip } from './types'
-export type { ToolContext, ToolImpl } from './types'
+export type { ToolContext, ToolImpl, ToolServices } from './types'
 
 const ALL: ToolImpl[] = [readFile, listDir, writeFile, editFile, runCommand, webFetch]
-const byName = new Map(ALL.map((t) => [t.name, t]))
+const FEATURE: ToolImpl[] = [remember, forget, useSkill, readSkillFile, createSkill]
+const byName = new Map([...ALL, ...FEATURE].map((t) => [t.name, t]))
+
+export interface Features {
+  memory: boolean
+  skills: boolean
+  /** At least one skill is usable right now (otherwise use_skill/read_skill_file would be pointless). */
+  haveSkills: boolean
+}
+
+/** Memory/skills tools that should be offered for this request. */
+export function featureTools(f: Features): ToolImpl[] {
+  return [
+    ...(f.memory ? [remember, forget] : []),
+    ...(f.skills && f.haveSkills ? [useSkill, readSkillFile] : []),
+    ...(f.skills ? [createSkill] : [])
+  ]
+}
 
 /** `extra` = dynamically provided tools (MCP). Built-ins win name clashes. */
 export const getTool = (name: string, extra: ToolImpl[] = []) => byName.get(name) ?? extra.find((t) => t.name === name)
@@ -21,9 +40,10 @@ export function policyFor(tool: ToolImpl, cfg: ToolSettings): ToolPolicy {
 }
 
 /** Tools offered to the model right now. */
-export function activeTools(cfg: ToolSettings, extra: ToolImpl[] = []): ToolImpl[] {
+export function activeTools(cfg: ToolSettings, extra: ToolImpl[] = [], features?: Features): ToolImpl[] {
   if (!cfg.enabled) return []
-  return [...ALL, ...extra.filter((t) => !byName.has(t.name))].filter(
+  const base = [...ALL, ...(features ? featureTools(features) : [])]
+  return [...base, ...extra.filter((t) => !byName.has(t.name))].filter(
     (t) => policyFor(t, cfg) !== 'deny' && (!metaFor(t.name)?.needsWorkspace || !!cfg.workspace)
   )
 }

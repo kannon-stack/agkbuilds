@@ -2,6 +2,8 @@
 
 import type { ToolPolicy } from './toolMeta'
 import type { Appearance, Mode } from './theme'
+import type { MemoryItem } from './memory'
+import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skills'
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
@@ -18,6 +20,8 @@ export interface ToolCall {
   status: ToolStatus
   /** Human-readable one-liner, e.g. "$ ls -la". */
   summary?: string
+  /** Extra context for the approval card (e.g. the text of the memory about to be forgotten). */
+  detail?: string
   /** Display name, e.g. "Run shell commands" or "github · create_issue". */
   label?: string
   /** True for tools provided by an external MCP server. */
@@ -39,7 +43,11 @@ export interface Message {
   error?: string
   /** Tool calls the assistant made in this turn (with their results). */
   toolCalls?: ToolCall[]
+  /** User message that invoked a skill with /name — instructions are snapshotted so history stays reproducible. */
+  skill?: { name: string; text: string }
 }
+
+export type Result<T = void> = { ok: true; value: T } | { ok: false; error: string }
 
 export interface Conversation {
   id: string
@@ -94,11 +102,20 @@ export interface Settings {
   tools: ToolSettings
   mcpServers: McpServer[]
   appearance: Appearance
+  memory: MemorySettings
+  skills: SkillsSettings
 }
 
-export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance'>> & {
+export interface MemorySettings {
+  /** Inject saved notes into the system prompt (and let the model use remember/forget). */
+  enabled: boolean
+}
+
+export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance' | 'memory' | 'skills'>> & {
   tools?: Partial<ToolSettings>
   appearance?: Partial<Appearance>
+  memory?: Partial<MemorySettings>
+  skills?: Partial<SkillsSettings>
 }
 
 export interface ProviderInput {
@@ -163,6 +180,25 @@ export interface Api {
     /** Opens a native folder picker; returns null if cancelled. */
     pickWorkspace(): Promise<string | null>
   }
+  memory: {
+    list(): Promise<MemoryItem[]>
+    add(text: string, scope: 'global' | 'project'): Promise<Result<MemoryItem>>
+    update(id: string, patch: { text?: string; enabled?: boolean }): Promise<Result<MemoryItem>>
+    remove(id: string): Promise<Result>
+    clear(): Promise<number>
+  }
+  skills: {
+    list(): Promise<SkillSummary[]>
+    get(name: string): Promise<SkillFull | null>
+    save(input: SkillInput): Promise<Result<SkillSummary>>
+    remove(name: string): Promise<Result>
+    setEnabled(name: string, enabled: boolean): Promise<Result>
+    /** Pick a skill folder with the native dialog and copy it into your skills. */
+    importFolder(): Promise<Result<SkillSummary> | null>
+    openFolder(): Promise<void>
+  }
+  /** Fired when memory or skills change behind the UI's back (e.g. the model saved a note). */
+  onDataChanged(cb: (kind: 'memory' | 'skills') => void): () => void
   app: {
     /** Renderer has applied the theme — the (hidden) window may now be shown. */
     rendered(): Promise<void>

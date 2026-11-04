@@ -4,6 +4,11 @@ import { MAX_TOOL_STEPS, metaFor } from '../shared/toolMeta'
 import type { ChatEvent, Conversation, Message, ToolCall, ToolDecision } from '../shared/types'
 import { streamChat, type ParsedToolCall, type WireMessage } from './openai'
 import { activeTools, authorize, getTool, systemNote, toToolDefs, ToolError } from './tools'
+import { skillPayload } from './tools/skillTools'
+import { activeSkills } from './skills/registry'
+import { services } from './services'
+import { formatMemoryBlock } from '../shared/memory'
+import { formatSkillCatalog, parseSlash, skillInvocation } from '../shared/skills'
 import { mcp } from './mcp/instance'
 import { decryptKey, getConversation, getProviderRecord, getSettings, saveConversation } from './store'
 
@@ -40,7 +45,9 @@ export function toWire(messages: Message[]): WireMessage[] {
         out.push({ role: 'tool', tool_call_id: c.id, content: c.result ?? 'Interrupted before completion.' })
       }
     } else if (m.content && !m.error) {
-      out.push({ role: m.role, content: m.content })
+      // A /skill invocation carries its (snapshotted) instructions into the model's view of this turn.
+      const content = m.role === 'user' && m.skill ? skillInvocation(m.skill.name, m.skill.text, parseSlash(m.content)?.args ?? '') : m.content
+      out.push({ role: m.role, content })
     }
   }
   return out
@@ -102,10 +109,27 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
   // Give servers still starting up (e.g. right after launch) a moment so the first message can use them.
   await mcp.settled(4000)
   const extra = mcp.tools()
-  const tools = activeTools(settings.tools, extra)
+  const ws = settings.tools.workspace
+  const usableSkills = settings.skills.enabled ? activeSkills(await services.skills.scan(ws), settings.skills) : []
+  const tools = activeTools(settings.tools, extra, { memory: settings.memory.enabled, skills: settings.skills.enabled, haveSkills: usableSkills.length > 0 })
   const toolDefs = toToolDefs(tools)
-  const system = [conv.systemPrompt ?? settings.systemPrompt, systemNote(tools, settings.tools.workspace)].filter(Boolean).join('\n\n')
-  const toolCtx = { workspace: settings.tools.workspace, signal: ctl.signal }
+  const memoryBlock = settings.memory.enabled
+    ? formatMemoryBlock(await services.memory.list(), ws, { canWrite: tools.some((t) => t.name === 'remember') }).text
+    : ''
+  const skillCatalog = tools.some((t) => t.name === 'use_skill') ? formatSkillCatalog(usableSkills) : ''
+  const system = [conv.systemPrompt ?? settings.systemPrompt, systemNote(tools, ws), memoryBlock, skillCatalog].filter(Boolean).join('\n\n')
+  const toolCtx = {
+    workspace: ws,
+    signal: ctl.signal,
+    services: {
+      memory: services.memory,
+      skills: services.skills,
+      skillsConfig: () => settings.skills,
+      changed: (kind: 'memory' | 'skills') => {
+        if (!wc.isDestroyed()) wc.send('data:changed', kind)
+      }
+    }
+  }
 
   try {
     for (let step = 0; step < MAX_TOOL_STEPS; step++) {
@@ -191,6 +215,7 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
     call.external = tool.external
     try {
       await tool.validate?.(args, toolCtx)
+      call.detail = await tool.preview?.(args, toolCtx)
     } catch (e) {
       return fail('error', e instanceof ToolError ? e.message : (e as Error).message)
     }
@@ -232,8 +257,19 @@ export async function sendMessage(
   const content = req.content.trim()
   if (!content) throw new Error('Empty message')
 
+  // "/skill-name …" invokes a skill directly (works even with tools off). Unknown commands are plain text.
+  let skill: Message['skill']
+  const slash = parseSlash(content)
+  if (slash) {
+    const settings = await getSettings()
+    if (settings.skills.enabled) {
+      const rec = activeSkills(await services.skills.scan(settings.tools.workspace), settings.skills).find((r) => r.name === slash.command)
+      if (rec) skill = { name: rec.name, text: skillPayload(rec) }
+    }
+  }
+
   if (conv.messages.length === 0) conv.title = titleFrom(content)
-  conv.messages.push({ id: randomUUID(), role: 'user', content, createdAt: Date.now() })
+  conv.messages.push({ id: randomUUID(), role: 'user', content, createdAt: Date.now(), ...(skill ? { skill } : {}) })
   await saveConversation(conv)
 
   void generate(wc, conv, req.providerId, req.model) // streams via events

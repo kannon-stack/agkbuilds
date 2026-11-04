@@ -31,6 +31,27 @@ const api: Api = {
     removeProvider: (id) => invoke('settings:removeProvider', id),
     pickWorkspace: () => invoke('settings:pickWorkspace')
   },
+  memory: {
+    list: () => invoke('memory:list'),
+    add: (text, scope) => invoke('memory:add', text, scope),
+    update: (id, patch) => invoke('memory:update', id, patch),
+    remove: (id) => invoke('memory:remove', id),
+    clear: () => invoke('memory:clear')
+  },
+  skills: {
+    list: () => invoke('skills:list'),
+    get: (name) => invoke('skills:get', name),
+    save: (input) => invoke('skills:save', input),
+    remove: (name) => invoke('skills:remove', name),
+    setEnabled: (name, enabled) => invoke('skills:setEnabled', name, enabled),
+    importFolder: () => invoke('skills:import'),
+    openFolder: () => invoke('skills:openFolder')
+  },
+  onDataChanged: (cb) => {
+    const listener = (_: unknown, kind: 'memory' | 'skills') => cb(kind)
+    ipcRenderer.on('data:changed', listener)
+    return () => ipcRenderer.removeListener('data:changed', listener)
+  },
   app: {
     rendered: async () => ipcRenderer.send('app:rendered')
   },
