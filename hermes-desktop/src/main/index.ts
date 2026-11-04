@@ -7,17 +7,24 @@ import * as chat from './chat'
 import { fetchModels } from './openai'
 import { mcp } from './mcp/instance'
 import { parseImport } from './mcp/util'
+import { resolveAppearance } from '../shared/theme'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
-function createWindow(): BrowserWindow {
+/** Window background matching the active theme (so resize/overscroll never flashes the wrong colour). */
+async function themeBackground(): Promise<string> {
+  const s = await store.getSettings()
+  return resolveAppearance(s.theme, s.appearance, nativeTheme.shouldUseDarkColors).colors.bg
+}
+
+async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1180,
     height: 780,
     minWidth: 720,
     minHeight: 480,
     title: APP_NAME,
-    backgroundColor: '#0e1014',
+    backgroundColor: await themeBackground(),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -27,7 +34,12 @@ function createWindow(): BrowserWindow {
       sandbox: true
     }
   })
-  win.once('ready-to-show', () => win.show())
+  // Stay hidden until the renderer has applied the saved theme (avoids a flash of the default
+  // theme); fall back to showing after 2.5 s so a renderer failure can never leave no window.
+  const reveal = () => !win.isDestroyed() && !win.isVisible() && win.show()
+  const fallback = setTimeout(reveal, 2500)
+  win.once('closed', () => clearTimeout(fallback))
+  win.webContents.ipc.once('app:rendered', reveal)
 
   // Never let the app window navigate away; open links in the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -100,6 +112,8 @@ function registerIpc() {
   h('settings:update', async (_e, patch) => {
     const s = await store.updateSettings(patch)
     nativeTheme.themeSource = s.theme
+    const bg = resolveAppearance(s.theme, s.appearance, nativeTheme.shouldUseDarkColors).colors.bg
+    BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.setBackgroundColor(bg))
     return s
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
@@ -157,9 +171,9 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc()
     mcp.onStatus = (status) => BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('mcp:status', status))
     void syncMcp() // connect enabled servers in the background
-    createWindow()
+    await createWindow()
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow()
     })
   })
 

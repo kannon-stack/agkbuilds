@@ -14,6 +14,7 @@ import type {
   ToolSettings
 } from '../shared/types'
 import type { McpServer, McpServerInput } from '../shared/mcp'
+import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
 
 /**
  * File-backed storage. One JSON file per conversation + settings.json.
@@ -29,6 +30,7 @@ interface SettingsFile {
   theme: ThemeSetting
   tools: ToolSettings
   mcpServers: McpServerRecord[]
+  appearance: Appearance
 }
 
 const DEFAULT_PROVIDER: ProviderRecord = {
@@ -45,7 +47,8 @@ const DEFAULTS: SettingsFile = {
   temperature: 0.7,
   theme: 'system',
   tools: { enabled: true, workspace: '', policies: {} },
-  mcpServers: []
+  mcpServers: [],
+  appearance: DEFAULT_APPEARANCE
 }
 
 let root = ''
@@ -120,6 +123,8 @@ async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
   merged.tools = { ...DEFAULTS.tools, ...(f?.tools ?? {}), policies: { ...(f?.tools?.policies ?? {}) } }
+  // Re-validate on every load: the file may be hand-edited or from an older version.
+  merged.appearance = sanitizeAppearance(f?.appearance, DEFAULT_APPEARANCE)
   merged.mcpServers = (f?.mcpServers ?? []).map((r) => ({ ...r, env: r.env ?? {}, headers: r.headers ?? {}, toolPolicies: r.toolPolicies ?? {} }))
   if (!merged.providers?.length) merged.providers = [DEFAULT_PROVIDER]
   if (!merged.providers.some((p) => p.id === merged.activeProviderId)) {
@@ -170,6 +175,7 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   if (patch.systemPrompt !== undefined) next.systemPrompt = patch.systemPrompt
   if (patch.temperature !== undefined) next.temperature = Math.min(2, Math.max(0, patch.temperature))
   if (patch.theme !== undefined) next.theme = patch.theme
+  if (patch.appearance) next.appearance = sanitizeAppearance(patch.appearance, f.appearance)
   if (patch.tools) {
     next.tools = { ...f.tools, ...patch.tools, policies: { ...f.tools.policies, ...(patch.tools.policies ?? {}) } }
   }

@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 **streaming chat + history**, **provider/model switching + settings**, and **tool use**
-(files, shell, web) with approvals, and **MCP servers** as an extension point for more tools. Memory/skills and theming are designed-for but not built.
+(files, shell, web) with approvals, **MCP servers** as an extension point for more tools, and **theming**. Memory/skills are designed-for but not built.
 
 > Rename the app in one place: `APP_NAME` in `src/shared/types.ts` (+ `productName` in `package.json`).
 
@@ -115,6 +115,30 @@ agent loop, the same approval cards and the same policy system. Uses the officia
 Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pure helpers),
 `src/renderer/src/components/McpSettings.tsx`. Tests use a real SDK-based fixture server over stdio and HTTP.
 
+## Theming
+
+**Settings → Appearance.** Everything visual is a CSS variable set on `:root` by one pure function,
+`resolveAppearance()` in `src/shared/theme.ts` (shared by the renderer, the main process and tests).
+
+- **Mode:** System / Light / Dark. Each mode has its own theme slot, so *System* flips between your chosen
+  light and dark themes live when the OS changes.
+- **11 built-in themes** (6 dark, 5 light, incl. two High Contrast). A unit test enforces WCAG contrast on every
+  preset (text 7:1, muted/accent/status 4.5:1, code, syntax colours).
+- **Accent override** over any theme; the text-on-accent colour is recomputed for readability.
+- **Typography & shape:** UI font (4 stacks + custom), code font, text size 85–135 % (every text size
+  scales, not just the base), corner roundness, chat width.
+- **Custom themes:** *Customize* any preset or *New theme* → editor with 18 colours, **live preview across the
+  whole app**, a readability panel (advisory), Save/Cancel/Revert. **Export/Import** as JSON
+  (`{"talariaTheme":1,"name","base","colors"}`) to share themes; imports are validated and open in the
+  editor for review first.
+- **No flash:** the window stays hidden until the renderer has applied the saved theme (2.5 s failsafe), and
+  its native background colour is set from the theme in the main process (also updated on change).
+- **Safety:** all appearance data is re-validated on every load and on every update (`sanitizeAppearance`):
+  hex-only colours, font names stripped of CSS metacharacters, ids/sizes/counts clamped, deleted themes can't
+  leave dangling selections. A hand-edited or hostile `settings.json` can't inject CSS or crash startup.
+
+Adding a preset = one entry in `PRESETS`; adding a new themable token = one key in `ThemeColors` + `CSS_VAR`.
+
 ## UI
 
 - **Layout:** left sidebar (new chat, search, history grouped Today/Yesterday/7 days/Older,
@@ -133,9 +157,7 @@ Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pu
 
 The seams already exist so these are additive:
 
-1. **Themes** — all colors, radii, fonts, sidebar/thread widths are CSS variables in
-   `styles.css`. A theme = a JSON map of variables applied to `:root`; ship presets +
-   user-editable custom theme + accent picker.
+1. **Themes** — done (see Theming). Possible next: per-chat/per-provider accent, wallpapers, message-bubble styles, density.
 2. **Providers** — add native adapters (Anthropic Messages, etc.) behind the same
    `streamChat` shape; provider `kind` field in `ProviderRecord`.
 3. **Per-chat settings** — `Conversation.systemPrompt` is already honored by `chat.ts`; needs UI. Add presets ("personas").
@@ -153,6 +175,7 @@ The seams already exist so these are additive:
   aren't rendered; local servers keep the working directory they started with (restart after changing
   workspace). When the app is launched from the macOS Dock/Windows Start menu, `PATH` may lack tools like
   `npx`/`uvx` that a terminal has — use an absolute path to the command if a server fails to start.
+- Theming: fonts must already be installed (none are bundled); sidebar width and spacing aren't themable yet; no scheduled (time-of-day) theme switching.
 - Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
 - No context-window management — the full history is sent each turn.
 - Reasoning/"thinking" deltas from providers (e.g. `reasoning_content`) are ignored, not shown.

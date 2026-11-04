@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { McpServerStatus } from '../../shared/mcp'
+import { sanitizeAppearance, type Appearance } from '../../shared/theme'
+import type { ThemeOverride } from './applyTheme'
 import type {
   ChatEvent,
   ConnectionResult,
@@ -19,7 +21,9 @@ interface State {
   models: ConnectionResult | null
   modelsLoading: boolean
   settingsOpen: boolean
-  settingsTab: 'providers' | 'general' | 'tools' | 'mcp'
+  settingsTab: 'providers' | 'general' | 'tools' | 'mcp' | 'appearance'
+  /** Unsaved colours from the theme editor, applied live. */
+  previewTheme: ThemeOverride | null
   mcpStatus: McpServerStatus[]
   toast: string | null
 
@@ -37,11 +41,16 @@ interface State {
   loadModels(providerId?: string): Promise<void>
   applyEvent(e: ChatEvent): void
   setSettings(s: Settings): void
-  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools' | 'mcp'): void
+  openSettings(open: boolean, tab?: 'providers' | 'general' | 'tools' | 'mcp' | 'appearance'): void
+  setPreviewTheme(p: ThemeOverride | null): void
+  /** Apply an appearance change instantly and persist it (debounced). */
+  updateAppearance(patch: Partial<Appearance>): void
   showToast(msg: string): void
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
+let appearanceTimer: ReturnType<typeof setTimeout> | undefined
+let pendingAppearance: Partial<Appearance> = {}
 
 export const useStore = create<State>((set, get) => ({
   ready: false,
@@ -53,6 +62,7 @@ export const useStore = create<State>((set, get) => ({
   modelsLoading: false,
   settingsOpen: false,
   settingsTab: 'providers',
+  previewTheme: null,
   mcpStatus: [],
   toast: null,
 
@@ -224,6 +234,24 @@ export const useStore = create<State>((set, get) => ({
 
   setSettings(settings) {
     set({ settings })
+  },
+  setPreviewTheme(previewTheme) {
+    set({ previewTheme })
+  },
+  updateAppearance(patch) {
+    const { settings } = get()
+    if (!settings) return
+    // Optimistic: same validation as the main process, so what you see is what gets saved.
+    set({ settings: { ...settings, appearance: sanitizeAppearance(patch, settings.appearance) } })
+    pendingAppearance = { ...pendingAppearance, ...patch }
+    clearTimeout(appearanceTimer)
+    appearanceTimer = setTimeout(async () => {
+      const toSend = pendingAppearance
+      pendingAppearance = {}
+      const saved = await window.api.settings.update({ appearance: toSend })
+      // Keep newer optimistic edits made while the request was in flight.
+      if (!Object.keys(pendingAppearance).length) set({ settings: saved })
+    }, 250)
   },
   openSettings(open, tab) {
     set((s) => ({ settingsOpen: open, settingsTab: tab ?? s.settingsTab }))

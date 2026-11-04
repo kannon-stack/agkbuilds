@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
-import type { ConnectionResult, Provider, ThemeSetting } from '../../../shared/types'
+import type { ConnectionResult, Provider } from '../../../shared/types'
 import { McpSettings } from './McpSettings'
+import { AppearanceSettings } from './AppearanceSettings'
 import { TOOL_META, type ToolPolicy } from '../../../shared/toolMeta'
 
-type Tab = 'general' | 'providers' | 'tools' | 'mcp'
+type Tab = 'general' | 'providers' | 'tools' | 'mcp' | 'appearance'
 
 export function SettingsModal() {
   const { settings, setSettings, openSettings, loadModels, settingsTab } = useStore()
@@ -32,9 +33,9 @@ export function SettingsModal() {
           </button>
         </div>
         <div className="tabs">
-          {(['providers', 'tools', 'mcp', 'general'] as Tab[]).map((t) => (
+          {(['providers', 'tools', 'mcp', 'appearance', 'general'] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : 'Providers'}
+              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : t === 'appearance' ? 'Appearance' : 'Providers'}
             </button>
           ))}
         </div>
@@ -45,6 +46,8 @@ export function SettingsModal() {
             <Tools />
           ) : tab === 'mcp' ? (
             <McpSettings />
+          ) : tab === 'appearance' ? (
+            <AppearanceSettings />
           ) : (
             <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
           )}
@@ -127,14 +130,6 @@ function General() {
 
   return (
     <div className="form">
-      <label>
-        Theme
-        <select value={settings!.theme} onChange={(e) => update({ theme: e.target.value as ThemeSetting })}>
-          <option value="system">System</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </label>
       <label>
         System prompt
         <textarea rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} onBlur={() => update({ systemPrompt: prompt })} />

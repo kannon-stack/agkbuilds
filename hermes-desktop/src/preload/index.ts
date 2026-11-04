@@ -31,6 +31,9 @@ const api: Api = {
     removeProvider: (id) => invoke('settings:removeProvider', id),
     pickWorkspace: () => invoke('settings:pickWorkspace')
   },
+  app: {
+    rendered: async () => ipcRenderer.send('app:rendered')
+  },
   mcp: {
     status: () => invoke('mcp:status'),
     save: (input) => invoke('mcp:save', input),

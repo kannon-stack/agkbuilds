@@ -1,6 +1,7 @@
 // Types shared by main, preload and renderer. Keep this file dependency-free.
 
 import type { ToolPolicy } from './toolMeta'
+import type { Appearance, Mode } from './theme'
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
@@ -75,7 +76,7 @@ export type Provider = Omit<ProviderRecord, 'apiKey'> & {
   keyPlain: boolean
 }
 
-export type ThemeSetting = 'system' | 'dark' | 'light'
+export type ThemeSetting = Mode
 
 export interface ToolSettings {
   enabled: boolean
@@ -92,10 +93,12 @@ export interface Settings {
   theme: ThemeSetting
   tools: ToolSettings
   mcpServers: McpServer[]
+  appearance: Appearance
 }
 
-export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance'>> & {
   tools?: Partial<ToolSettings>
+  appearance?: Partial<Appearance>
 }
 
 export interface ProviderInput {
@@ -159,6 +162,10 @@ export interface Api {
     removeProvider(id: string): Promise<Settings>
     /** Opens a native folder picker; returns null if cancelled. */
     pickWorkspace(): Promise<string | null>
+  }
+  app: {
+    /** Renderer has applied the theme — the (hidden) window may now be shown. */
+    rendered(): Promise<void>
   }
   mcp: {
     status(): Promise<McpServerStatus[]>
