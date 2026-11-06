@@ -313,6 +313,32 @@ Images are re-sent with every turn (no context management yet), so long image-he
 ### Scroll-to-latest
 A floating ↓ button appears whenever you've scrolled away from the bottom (e.g. while a long answer streams) and jumps back.
 
+## Context management
+
+Goal: long chats keep working instead of failing at the model's limit, without the user babysitting them. Everything below is
+about what is *sent*; the full chat always stays visible and stored.
+
+- **Window detection** (`shared/context.ts: windowFor`): Settings override → learned from a "maximum context length is N" error →
+  the provider's Models API (Claude `max_input_tokens`) → a name table (claude/gpt-5/gemini/llama/…, router prefixes like `cc/` are fine) → 128k.
+- **Estimation:** ~3.6 chars/token (CJK 1/char), flat 1 200 per image, plus tool-call args/results. The composer's **meter** anchors on the
+  provider's own `usage` from the last answer (Claude always; OpenAI-compatible servers that send `usage` in the stream) and adds an
+  estimate for anything newer, so it self-corrects.
+- **Compaction = a summary stored on a message.** `Message.compaction` on message *M* means "everything up to and including *M* is
+  replaced by this text" for requests. It lives in the tree, so it is branch-aware: editing/regenerating before *M* branches away from
+  the summary automatically; switching back restores it. Cuts are always right before a user turn (kept tail starts with a user message,
+  tool calls never lose their results). The summary is injected into the **system prompt**, not as a fake message, so role alternation
+  rules never matter. A later compaction folds the earlier summary in (`<previous_summary>`), and very long histories are summarized in
+  several passes that each fit the window (`main/summarize.ts`, same provider/model as the chat, no tools).
+- **When:** automatically before a request once the estimate passes `min(window × threshold, send budget)` (default 80 %, keeping the last
+  2 turns verbatim); on demand with `/compact [focus text]` or the meter's *Compact now* (keeps the last turn); and as **overflow
+  recovery** — if a provider still rejects the prompt as too long (`parseOverflow`), the limit is learned from the message if it states one,
+  the history is compacted, and the step is retried once before surfacing a friendly error.
+- **Fitting without summaries** (`fitToWindow`, used when auto-summarizing is off, fails, or isn't enough): shorten tool results (>1 500 chars)
+  and drop images from turns older than the last two, then drop the oldest whole turns, always keeping the newest. A one-time notice says so.
+- **Settings → General → Context:** auto on/off, threshold (50–95 %), window override. Stored as `settings.context`, validated on load.
+- Limits: summaries are model-written (lossy by nature — view them via the divider); token counts are estimates unless the provider reports
+  usage; only the active branch is considered; the summarizer uses the chat's own model/provider (cost); no per-provider window setting yet.
+
 ## Customization roadmap (designed-for, not built)
 
 The seams already exist so these are additive:
@@ -337,7 +363,6 @@ The seams already exist so these are additive:
 - Memory & skills: all enabled notes are injected (no relevance ranking/embeddings), so keep notes short; the model only saves memories when it decides to (no background extraction); `allowed-tools`/`license` header keys are preserved but not enforced; skill scripts run only through `run_command` (with its approvals), never automatically; slash commands take free text, not structured arguments; no skill marketplace/sync.
 - Theming: fonts must already be installed (none are bundled); sidebar width and spacing aren't themable yet; no scheduled (time-of-day) theme switching.
 - Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
-- No context-window management — the full history is sent each turn.
 - Reasoning/"thinking" deltas from providers (e.g. `reasoning_content`) are ignored, not shown.
 - Conversation titles are the first user message (truncated), not model-generated.
 - Not yet packaged/code-signed (`npm run dist` uses electron-builder defaults, untested). Tested on Linux only (Xvfb); macOS/Windows untested.

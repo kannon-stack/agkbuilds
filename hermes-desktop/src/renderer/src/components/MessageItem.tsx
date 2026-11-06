@@ -13,6 +13,8 @@ interface Props {
   continuation: boolean
   /** A response is being generated: editing and branch switching are paused. */
   busy: boolean
+  /** Older messages are being summarized before this answer starts. */
+  compacting?: boolean
   siblings: SiblingInfo
   onRegenerate(): void
   onEdit(messageId: string, text: string): void
@@ -93,7 +95,7 @@ function Usage({ u }: { u: NonNullable<Message['usage']> }) {
   )
 }
 
-export function MessageItem({ message, streaming, isLast, continuation, busy, siblings, onRegenerate, onEdit, onSwitch }: Props) {
+export function MessageItem({ message, streaming, isLast, continuation, busy, compacting, siblings, onRegenerate, onEdit, onSwitch }: Props) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const isUser = message.role === 'user'
@@ -157,9 +159,13 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, si
         {message.content ? (
           <Markdown text={message.content} />
         ) : streaming && !calls.length && !message.thinking ? (
-          <div className="thinking">
-            <span /> <span /> <span />
-          </div>
+          compacting ? (
+            <div className="muted compacting">Summarizing earlier messages to make room…</div>
+          ) : (
+            <div className="thinking">
+              <span /> <span /> <span />
+            </div>
+          )
         ) : null}
         {streaming && message.content && !calls.length && <span className="caret" />}
         {calls.length > 0 && (

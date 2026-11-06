@@ -59,6 +59,7 @@ export function friendlyError(e: unknown, baseUrl: string): Error {
 
 interface ModelInfo {
   maxTokens?: number
+  contextWindow?: number
   adaptive?: boolean
   effort?: boolean
 }
@@ -73,6 +74,7 @@ export async function modelInfo(client: Anthropic, baseUrl: string, model: strin
     const m: any = await client.models.retrieve(model, undefined, { signal })
     const info: ModelInfo = {
       maxTokens: typeof m.max_tokens === 'number' ? m.max_tokens : undefined,
+      contextWindow: typeof m.max_input_tokens === 'number' ? m.max_input_tokens : undefined,
       adaptive: m.capabilities?.thinking?.types?.adaptive?.supported,
       effort: m.capabilities?.effort?.supported
     }
@@ -81,6 +83,10 @@ export async function modelInfo(client: Anthropic, baseUrl: string, model: strin
   } catch {
     return {}
   }
+}
+/** Input-token limit from the Models API, if it reports one. */
+export async function claudeContextWindow(baseUrl: string, apiKey: string | undefined, model: string, signal?: AbortSignal): Promise<number | undefined> {
+  return (await modelInfo(makeClient(baseUrl, apiKey), baseUrl, model, signal)).contextWindow
 }
 export const clearModelCache = () => modelCache.clear()
 

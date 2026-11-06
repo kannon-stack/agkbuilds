@@ -85,7 +85,7 @@ export interface ToolDelta {
   name?: string
   args?: string
 }
-export type Parsed = { text?: string; toolDeltas?: ToolDelta[]; done?: boolean; error?: string }
+export type Parsed = { text?: string; toolDeltas?: ToolDelta[]; done?: boolean; error?: string; usage?: UsageInfo }
 
 /** Interpret one SSE `data:` payload from a chat.completions stream. */
 export function parsePayload(data: string): Parsed {
@@ -101,6 +101,10 @@ export function parsePayload(data: string): Parsed {
   }
   const choice = json?.choices?.[0]
   const out: Parsed = {}
+  // Servers that report usage send it in a late chunk (often with no choices).
+  if (json?.usage && typeof json.usage.prompt_tokens === 'number') {
+    out.usage = { input: json.usage.prompt_tokens, output: json.usage.completion_tokens, cacheRead: json.usage.prompt_tokens_details?.cached_tokens || undefined }
+  }
   const text: unknown = choice?.delta?.content ?? choice?.text
   if (typeof text === 'string' && text) out.text = text
   const tcs: any[] | undefined = choice?.delta?.tool_calls
@@ -225,12 +229,14 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
   const acc = new ToolCallAccumulator()
   let buf = ''
   let finished = false
+  let usage: UsageInfo | undefined
 
   function* handle(payloads: string[]): Generator<StreamEvent> {
     for (const p of payloads) {
       const r = parsePayload(p)
       if (r.error) throw new Error(r.error)
       if (r.text) yield { type: 'text', text: r.text }
+      if (r.usage) usage = r.usage
       if (r.toolDeltas) acc.add(r.toolDeltas)
       if (r.done) {
         finished = true
@@ -249,6 +255,7 @@ export async function* streamChat(opts: StreamOptions): AsyncGenerator<StreamEve
       yield* handle(payloads)
     }
     if (!finished) yield* handle(splitSSE(buf + '\n\n').payloads) // flush unterminated final event
+    if (usage) yield { type: 'meta', meta: { usage } }
     const calls = acc.result()
     if (calls.length) yield { type: 'tool_calls', calls }
   } catch (e) {

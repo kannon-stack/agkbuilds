@@ -33,6 +33,8 @@ interface State {
   previewTheme: ThemeOverride | null
   mcpStatus: McpServerStatus[]
   toast: string | null
+  /** Conversations whose older messages are being summarized right now. */
+  compacting: Record<string, boolean>
   /** Message to scroll to and flash (set by search results). */
   focusId: string | null
 
@@ -42,6 +44,8 @@ interface State {
   /** Open a chat at a specific message (from search), switching branch if needed. */
   reveal(conversationId: string, messageId: string): Promise<void>
   clearFocus(): void
+  /** Summarize older messages now (the /compact command). */
+  compact(instructions?: string): Promise<void>
   newChat(): Promise<void>
   remove(id: string): Promise<void>
   rename(id: string, title: string): Promise<void>
@@ -90,6 +94,7 @@ export const useStore = create<State>((set, get) => ({
   previewTheme: null,
   mcpStatus: [],
   toast: null,
+  compacting: {},
   focusId: null,
 
   async init() {
@@ -207,6 +212,20 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  async compact(instructions) {
+    const { active } = get()
+    if (!active || get().generating[active.id] || get().compacting[active.id]) return
+    const id = active.id
+    set((s) => ({ compacting: { ...s.compacting, [id]: true } }))
+    try {
+      const r = await window.api.chat.compact(id, instructions)
+      if (!r.ok) get().showToast(r.error)
+      else get().showToast(`Summarized ${r.value.compaction.messages} earlier messages (~${r.value.compaction.tokensBefore.toLocaleString()} → ${r.value.compaction.tokensAfter.toLocaleString()} tokens)`)
+    } finally {
+      set((s) => ({ compacting: { ...s.compacting, [id]: false } }))
+    }
+  },
+
   async stop() {
     const { active } = get()
     if (active) await window.api.chat.stop(active.id)
@@ -270,6 +289,22 @@ export const useStore = create<State>((set, get) => ({
       }
       return
     }
+    if (e.type === 'compacting') {
+      set((s) => ({ compacting: { ...s.compacting, [e.conversationId]: true } }))
+      return
+    }
+    if (e.type === 'notice') {
+      set((s) => ({ compacting: { ...s.compacting, [e.conversationId]: false } }))
+      if (active?.id === e.conversationId) get().showToast(e.text)
+      return
+    }
+    if (e.type === 'compacted') {
+      set((s) => ({
+        compacting: { ...s.compacting, [e.conversationId]: false },
+        active: s.active?.id === e.conversationId ? { ...s.active, messages: s.active.messages.map((m) => (m.id === e.messageId ? { ...m, compaction: e.compaction } : m)) } : s.active
+      }))
+      return
+    }
     if (active?.id === e.conversationId) {
       const messages = active.messages.map((m) => {
         if (m.id !== e.messageId) return m
@@ -287,7 +322,7 @@ export const useStore = create<State>((set, get) => ({
       set({ active: { ...active, messages } })
     }
     if (e.type === 'done' || e.type === 'error') {
-      set((s) => ({ generating: { ...s.generating, [e.conversationId]: false } }))
+      set((s) => ({ generating: { ...s.generating, [e.conversationId]: false }, compacting: { ...s.compacting, [e.conversationId]: false } }))
       void get().refreshList()
     }
   },

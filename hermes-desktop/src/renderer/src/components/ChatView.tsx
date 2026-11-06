@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { effectiveModel, useStore } from '../store'
 import { APP_NAME } from '../../../shared/types'
 import { pathOf, siblingInfo } from '../../../shared/tree'
 import { Composer } from './Composer'
 import { MessageItem } from './MessageItem'
 import { ExportMenu } from './ExportMenu'
+import { CompactionDivider } from './CompactionDivider'
 
 export function ChatView() {
-  const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings } = useStore()
+  const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings, compacting } = useStore()
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const [away, setAway] = useState(false) // scrolled up from the latest message
@@ -79,18 +80,21 @@ export function ChatView() {
         ) : (
           <div className="thread">
             {path.map((m, i) => (
+              <Fragment key={m.id}>
               <MessageItem
-                key={m.id}
                 message={m}
                 isLast={m.id === lastId}
                 continuation={m.role === 'assistant' && path[i - 1]?.role === 'assistant'}
                 streaming={busy && m.id === lastId && m.role === 'assistant'}
                 busy={busy}
+                compacting={!!compacting[active!.id]}
                 siblings={siblingInfo(active!, m)}
                 onRegenerate={regenerate}
                 onEdit={edit}
                 onSwitch={switchBranch}
               />
+              {m.compaction && <CompactionDivider c={m.compaction} />}
+              </Fragment>
             ))}
           </div>
         )}

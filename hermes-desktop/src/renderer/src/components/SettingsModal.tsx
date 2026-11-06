@@ -172,7 +172,44 @@ function General() {
         <input type="range" min={0} max={2} step={0.1} value={temp} onChange={(e) => setTemp(+e.target.value)} onMouseUp={() => update({ temperature: temp })} onKeyUp={() => update({ temperature: temp })} />
         <span className="hint">Lower is more focused, higher is more creative.</span>
       </label>
+      <Context />
       <About />
+    </div>
+  )
+}
+
+function Context() {
+  const { settings, patchSettings } = useStore()
+  const c = settings!.context
+  const [threshold, setThreshold] = useState(c.threshold)
+  const [windowText, setWindowText] = useState(c.window ? String(c.window) : '')
+  return (
+    <div className="ctx-settings">
+      <h3 className="subhead">Context</h3>
+      <label className="check switch">
+        <input type="checkbox" checked={c.auto} onChange={(e) => void patchSettings({ context: { auto: e.target.checked } })} />
+        <span>
+          <b>Summarize older messages automatically</b>
+          <span className="hint"> When a chat nears the model’s context window, older turns are condensed into a summary (the full chat stays visible). Turn off to only trim old tool results and drop the oldest turns when needed.</span>
+        </span>
+      </label>
+      <label>
+        Summarize at <b>{Math.round(threshold * 100)}%</b> of the window
+        <input
+          type="range" min={50} max={95} step={5} value={Math.round(threshold * 100)} disabled={!c.auto}
+          onChange={(e) => setThreshold(+e.target.value / 100)}
+          onMouseUp={() => void patchSettings({ context: { threshold } })} onKeyUp={() => void patchSettings({ context: { threshold } })}
+        />
+      </label>
+      <label>
+        Context window (tokens)
+        <input
+          type="number" min={0} step={1000} placeholder="Auto-detect" value={windowText}
+          onChange={(e) => setWindowText(e.target.value)}
+          onBlur={() => void patchSettings({ context: { window: Math.max(0, parseInt(windowText, 10) || 0) } })}
+        />
+        <span className="hint">Leave empty to detect it from the provider or model name. Set it for local or custom models whose limit differs (e.g. 32768).</span>
+      </label>
     </div>
   )
 }

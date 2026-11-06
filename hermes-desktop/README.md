@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app (working title). Streaming chat with history, any OpenAI-compatible
 provider (preset: [9router](https://github.com/decolua/9router)), file/shell/web tools **with approvals**, MCP servers,
-memory, skills and themes — plus message editing with branches, full-text search, export, and image attachments. See [DESIGN.md](DESIGN.md) for architecture and decisions.
+memory, skills and themes — plus message editing with branches, full-text search, export, image attachments, and automatic context management (long chats are summarized as they approach the model's limit; `/compact` does it on demand). See [DESIGN.md](DESIGN.md) for architecture and decisions.
 
 ## Install
 

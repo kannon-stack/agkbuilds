@@ -6,6 +6,7 @@ import { MAX_ATTACHMENTS_PER_MESSAGE, IMAGE_MIMES } from '../../../shared/attach
 import type { Attachment } from '../../../shared/types'
 import { prepareImage } from '../images'
 import { Thumbs } from './Thumbs'
+import { ContextMeter } from './ContextMeter'
 
 interface Props {
   generating: boolean
@@ -18,6 +19,8 @@ interface Command {
   name: string
   description: string
   kind: 'builtin' | 'skill'
+  /** Fully typed, Enter runs it (its argument is optional). */
+  runsAlone?: boolean
 }
 
 export function Composer({ generating, disabled, onSend, onStop }: Props) {
@@ -27,7 +30,8 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
   const [files, setFiles] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
-  const { settings, skills, memory, openSettings, refreshMemory, showToast } = useStore()
+  const { settings, skills, memory, openSettings, refreshMemory, showToast, compact, compacting, active } = useStore()
+  const summarizing = !!active && !!compacting[active.id]
   const tools = settings?.tools
   const memoryOn = !!settings?.memory.enabled
   const folder = tools?.workspace.split(/[\\/]/).filter(Boolean).pop()
@@ -45,6 +49,7 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
   // Slash commands: built-ins + enabled skills, shown while you're typing "/name".
   const commands = useMemo<Command[]>(
     () => [
+      { name: 'compact', description: 'Summarize older messages to free up context — /compact focus on the API design', kind: 'builtin' as const, runsAlone: true },
       ...(memoryOn ? [{ name: 'remember', description: 'Save a note to memory — /remember I prefer tabs', kind: 'builtin' as const }] : []),
       ...(settings?.skills.enabled ? skills.filter((s) => s.enabled).map((s) => ({ name: s.name, description: s.description, kind: 'skill' as const })) : [])
     ],
@@ -86,7 +91,14 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
 
   const submit = async () => {
     const t = text.trim()
-    if ((!t && !files.length) || generating || disabled) return
+    if ((!t && !files.length) || generating || summarizing || disabled) return
+    // /compact [focus]: summarize older messages now — handled locally.
+    const cmp = files.length ? null : /^\/compact(?:\s+([\s\S]*))?$/.exec(t)
+    if (cmp) {
+      setText('')
+      void compact(cmp[1])
+      return
+    }
     // /remember <note>: handled locally — saves instantly, no model call.
     const rem = files.length ? null : /^\/remember(?:\s+([\s\S]*))?$/.exec(t)
     if (rem && memoryOn) {
@@ -157,7 +169,7 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
               if (e.key === 'Escape') { e.preventDefault(); return setDismissed(true) }
               const c = matches[sel]
               // Tab always completes; Enter completes unless the command is already fully typed (then it sends).
-              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && (text.trim() !== `/${c.name}` || c.kind === 'builtin'))) { e.preventDefault(); return complete(c) }
+              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && (text.trim() !== `/${c.name}` || (c.kind === 'builtin' && !c.runsAlone)))) { e.preventDefault(); return complete(c) }
             }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -183,13 +195,14 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
                 🧠 {noteCount}
               </button>
             )}
+            <ContextMeter busy={generating || summarizing} />
             {skillCount > 0 && (
               <button className="chip on" onClick={() => openSettings(true, 'skills')} title={`${skillCount} skill${skillCount === 1 ? '' : 's'} available — type / to use one`}>
                 ⚡ {skillCount}
               </button>
             )}
           </div>
-          {generating ? (
+          {generating || summarizing ? (
             <button className="send stop" onClick={onStop} aria-label="Stop generating" title="Stop">
               ■
             </button>

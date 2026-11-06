@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import { MAX_TOOL_STEPS, metaFor } from '../shared/toolMeta'
-import type { ChatEvent, Conversation, EditRequest, SendRequest, Message, ToolCall, ToolDecision } from '../shared/types'
+import type { ChatEvent, Compaction, Conversation, EditRequest, ProviderRecord, Result, SendRequest, Settings, Message, ToolCall, ToolDecision } from '../shared/types'
 import { streamChat, type ParsedToolCall, type StreamEvent, type WireContentPart, type WireMessage } from './openai'
 import { missingImageNote, type ImageLookup } from '../shared/attachments'
-import { streamAnthropic, toAnthropicMessages, toAnthropicTools } from './anthropic'
+import { claudeContextWindow, streamAnthropic, toAnthropicMessages, toAnthropicTools } from './anthropic'
 import { DEFAULT_ANTHROPIC_OPTIONS, refusalMessage } from '../shared/anthropic'
 import { activeTools, authorize, getTool, systemNote, toToolDefs, ToolError } from './tools'
 import { skillPayload } from './tools/skillTools'
@@ -15,6 +15,11 @@ import { formatSkillCatalog, parseSlash, skillInvocation } from '../shared/skill
 import { mcp } from './mcp/instance'
 import { decryptKey, getConversation, getProviderRecord, getSettings, saveConversation } from './store'
 import { pathOf, pathTo, setLeaf, switchTo } from '../shared/tree'
+import {
+  autoCompactAt, chooseBoundary, contextUsage, estimateMessages, estimateText, fitToWindow, inputBudget, KEEP_TURNS_AUTO, KEEP_TURNS_MANUAL,
+  liveRegion, MIN_WINDOW, parseOverflow, summaryBlock, windowFor, type ContextUsage, type WindowInfo
+} from '../shared/context'
+import { summarize } from './summarize'
 import { addUserMessage, editUserMessage, OpError, prepareRegenerate } from './conversationOps'
 
 /** Active generations, keyed by conversation id. One at a time per conversation. */
@@ -97,6 +102,131 @@ async function loadImages(history: Message[]): Promise<Map<string, string>> {
   return out
 }
 
+/** Context windows learned from "maximum context length is N" errors (in memory), per provider+model. */
+const learnedWindows = new Map<string, number>()
+/** What a provider told us about a model's window (negative results are cached briefly so an offline provider isn't re-asked on every refresh). */
+const providerWindows = new Map<string, { tokens?: number; at: number }>()
+const FAIL_TTL_MS = 5 * 60_000
+
+async function resolveWindow(provider: ProviderRecord | undefined, model: string, settings: Settings): Promise<WindowInfo> {
+  const key = `${provider?.id}|${model}`
+  let reported: number | undefined
+  if (provider?.kind === 'anthropic' && model) {
+    const hit = providerWindows.get(key)
+    if (hit && (hit.tokens || Date.now() - hit.at < FAIL_TTL_MS)) reported = hit.tokens
+    else {
+      reported = await claudeContextWindow(provider.baseUrl, decryptKey(provider), model).catch(() => undefined)
+      providerWindows.set(key, { tokens: reported, at: Date.now() })
+    }
+  }
+  return windowFor(model, { setting: settings.context.window, learned: learnedWindows.get(key), provider: reported })
+}
+
+/** System prompt + tool definitions for a request (shared by generation and the context meter). */
+async function buildPrompt(settings: Settings, conv: Conversation) {
+  const extra = mcp.tools()
+  const ws = settings.tools.workspace
+  const usableSkills = settings.skills.enabled ? activeSkills(await services.skills.scan(ws), settings.skills) : []
+  const tools = activeTools(settings.tools, extra, { memory: settings.memory.enabled, skills: settings.skills.enabled, haveSkills: usableSkills.length > 0 })
+  const toolDefs = toToolDefs(tools)
+  const memoryBlock = settings.memory.enabled
+    ? formatMemoryBlock(await services.memory.list(), ws, { canWrite: tools.some((t) => t.name === 'remember') }).text
+    : ''
+  const skillCatalog = tools.some((t) => t.name === 'use_skill') ? formatSkillCatalog(usableSkills) : ''
+  const system = [conv.systemPrompt ?? settings.systemPrompt, systemNote(tools, ws), memoryBlock, skillCatalog].filter(Boolean).join('\n\n')
+  return { extra, ws, tools, toolDefs, system }
+}
+
+interface CompactOptions {
+  provider: ProviderRecord
+  model: string
+  settings: Settings
+  window: WindowInfo
+  auto: boolean
+  keep: number
+  instructions?: string
+  signal: AbortSignal
+}
+
+/**
+ * Summarize the older part of `path` and store the summary on the boundary message. Returns null when there's
+ * nothing worth summarizing. Throws on provider errors / abort (the caller decides how to degrade).
+ */
+async function compactPath(wc: WebContents, conv: Conversation, path: Message[], o: CompactOptions): Promise<Compaction | null> {
+  const b = chooseBoundary(path, o.keep)
+  if (!b) return null
+  emit(wc, { type: 'compacting', conversationId: conv.id })
+  const live = liveRegion(path)
+  const tokensBefore = estimateMessages(live.messages) + (live.compaction ? estimateText(live.compaction.text) : 0)
+  const text = await summarize({
+    kind: o.provider.kind,
+    baseUrl: o.provider.baseUrl,
+    apiKey: decryptKey(o.provider),
+    model: o.model,
+    anthropicOptions: o.provider.options,
+    messages: b.messages,
+    previous: b.previous?.text,
+    instructions: o.instructions,
+    window: o.window.tokens,
+    signal: o.signal
+  })
+  const keptFrom = path.indexOf(b.node) + 1
+  const compaction: Compaction = {
+    text,
+    createdAt: Date.now(),
+    auto: o.auto,
+    messages: (b.previous?.messages ?? 0) + b.messages.length,
+    tokensBefore,
+    tokensAfter: estimateText(text) + estimateMessages(path.slice(keptFrom))
+  }
+  b.node.compaction = compaction
+  await saveConversation(conv)
+  emit(wc, { type: 'compacted', conversationId: conv.id, messageId: b.node.id, compaction })
+  return compaction
+}
+
+/** "/compact": summarize older messages now. */
+export async function compactChat(wc: WebContents, conversationId: string, instructions?: string): Promise<Result<{ messageId: string; compaction: Compaction }>> {
+  const conv = await getConversation(conversationId)
+  if (!conv) return { ok: false, error: 'Conversation not found' }
+  if (active.has(conv.id)) return { ok: false, error: 'Wait for the current response to finish first.' }
+  const settings = await getSettings()
+  const provider = await getProviderRecord(conv.providerId ?? settings.activeProviderId)
+  const model = conv.model || provider?.defaultModel || ''
+  if (!provider || !model) return { ok: false, error: 'Choose a provider and model first.' }
+  const ctl = new AbortController()
+  active.set(conv.id, ctl)
+  try {
+    const compaction = await compactPath(wc, conv, pathOf(conv), {
+      provider, model, settings, window: await resolveWindow(provider, model, settings), auto: false, keep: KEEP_TURNS_MANUAL,
+      instructions: instructions?.trim() || undefined, signal: ctl.signal
+    })
+    if (!compaction) return { ok: false, error: 'Nothing to compact yet — the conversation is still short.' }
+    return { ok: true, value: { messageId: conv.messages.find((m) => m.compaction === compaction)!.id, compaction } }
+  } catch (e) {
+    const err = e as Error
+    return { ok: false, error: err.name === 'AbortError' || ctl.signal.aborted ? 'Cancelled.' : `Couldn’t summarize: ${err.message}` }
+  } finally {
+    active.delete(conv.id)
+  }
+}
+
+/** Data for the context meter. */
+export async function contextFor(conversationId: string): Promise<ContextUsage | null> {
+  const conv = await getConversation(conversationId)
+  if (!conv) return null
+  const settings = await getSettings()
+  const provider = await getProviderRecord(conv.providerId ?? settings.activeProviderId)
+  const model = conv.model || provider?.defaultModel || ''
+  const prompt = await buildPrompt(settings, conv)
+  return contextUsage(pathOf(conv), {
+    systemTokens: estimateText(prompt.system),
+    toolTokens: estimateText(JSON.stringify(prompt.toolDefs)),
+    window: await resolveWindow(provider, model, settings),
+    settings: settings.context
+  })
+}
+
 /** Stream an answer as a new child of `parentId` (the user message being answered). */
 async function generate(wc: WebContents, conv: Conversation, parentId: string, providerId?: string, model?: string) {
   const settings = await getSettings()
@@ -136,16 +266,7 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
 
   // Give servers still starting up (e.g. right after launch) a moment so the first message can use them.
   await mcp.settled(4000)
-  const extra = mcp.tools()
-  const ws = settings.tools.workspace
-  const usableSkills = settings.skills.enabled ? activeSkills(await services.skills.scan(ws), settings.skills) : []
-  const tools = activeTools(settings.tools, extra, { memory: settings.memory.enabled, skills: settings.skills.enabled, haveSkills: usableSkills.length > 0 })
-  const toolDefs = toToolDefs(tools)
-  const memoryBlock = settings.memory.enabled
-    ? formatMemoryBlock(await services.memory.list(), ws, { canWrite: tools.some((t) => t.name === 'remember') }).text
-    : ''
-  const skillCatalog = tools.some((t) => t.name === 'use_skill') ? formatSkillCatalog(usableSkills) : ''
-  const system = [conv.systemPrompt ?? settings.systemPrompt, systemNote(tools, ws), memoryBlock, skillCatalog].filter(Boolean).join('\n\n')
+  const { extra, ws, tools, toolDefs, system } = await buildPrompt(settings, conv)
   const toolCtx = {
     workspace: ws,
     signal: ctl.signal,
@@ -159,15 +280,52 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
     }
   }
 
+  let win = await resolveWindow(provider, useModel, settings)
+  let windowCap = Infinity // tightened after a "too long" error that doesn't say the limit
+  const overhead = estimateText(system) + estimateText(JSON.stringify(toolDefs))
+  let step = 0
+  let reuse = false
+  let recovered = false
+  let noticed = false
+  let lastEstimate = 0
+  const compactOpts = (auto: boolean, keep: number): CompactOptions => ({ provider, model: useModel, settings, window: win, auto, keep, signal: ctl.signal })
+
+  for (;;) {
   try {
-    for (let step = 0; step < MAX_TOOL_STEPS; step++) {
-      if (step > 0) last = await newAssistant(last.id)
+    for (; step < MAX_TOOL_STEPS; step++) {
+      if (step > 0 && !reuse) last = await newAssistant(last.id)
+      reuse = false
       const assistant = last
 
-      // History = everything before this (still empty) assistant message.
-      const history = pathTo(conv, assistant.parentId)
+      // History = everything before this (still empty) assistant message, minus what's been summarized or doesn't fit.
+      const path = pathTo(conv, assistant.parentId)
+      const tokens = Math.min(win.tokens, windowCap)
+      const live = liveRegion(path)
+      const liveEstimate = overhead + (live.compaction ? estimateText(live.compaction.text) : 0) + estimateMessages(live.messages)
+      if (settings.context.auto && liveEstimate > autoCompactAt(tokens, settings.context)) {
+        try {
+          await compactPath(wc, conv, path, compactOpts(true, KEEP_TURNS_AUTO))
+        } catch (e) {
+          if ((e as Error).name === 'AbortError' || ctl.signal.aborted) throw e
+          emit(wc, { type: 'notice', conversationId: conv.id, text: `Couldn’t summarize earlier messages (${(e as Error).message}); trimming instead.` })
+        }
+      }
+      const fit = fitToWindow(path, { budget: inputBudget(tokens), overhead })
+      lastEstimate = fit.estimate
+      if ((fit.trimmed || fit.dropped) && !noticed) {
+        noticed = true
+        emit(wc, {
+          type: 'notice',
+          conversationId: conv.id,
+          text: fit.dropped
+            ? `Left out the ${fit.dropped} earliest messages to fit the model’s context window. Use /compact to keep their gist.`
+            : 'Shortened older tool results and images to fit the model’s context window.'
+        })
+      }
+      const history = fit.messages
+      const sys = [system, fit.summary ? summaryBlock(fit.summary) : '', fit.dropped ? `[${fit.dropped} earlier messages were left out to fit the context window.]` : ''].filter(Boolean).join('\n\n')
       const images = await loadImages(history)
-      const wire: WireMessage[] = [...(system ? [{ role: 'system' as const, content: system }] : []), ...toWire(history, images)]
+      const wire: WireMessage[] = [...(sys ? [{ role: 'system' as const, content: sys }] : []), ...toWire(history, images)]
 
       let calls: ParsedToolCall[] = []
       let refusal: string | undefined
@@ -178,7 +336,7 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
               baseUrl: provider.baseUrl,
               apiKey: decryptKey(provider),
               model: useModel,
-              system,
+              system: sys,
               messages: toAnthropicMessages(history, images),
               tools: toAnthropicTools(toolDefs),
               options: provider.options ?? DEFAULT_ANTHROPIC_OPTIONS,
@@ -234,6 +392,24 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
     return await end('error', `Stopped after ${MAX_TOOL_STEPS} tool steps. Send a message to let me continue.`)
   } catch (e) {
     const err = e as Error
+    // "Prompt too long": shrink the history once and retry this step instead of failing the turn.
+    const ov = parseOverflow(err.message)
+    if (ov.overflow && !recovered && !ctl.signal.aborted && !last.content && !last.toolCalls?.length) {
+      recovered = true
+      if (ov.limit) {
+        learnedWindows.set(`${provider.id}|${useModel}`, ov.limit)
+        win = windowFor(useModel, { setting: settings.context.window, learned: ov.limit })
+      } else {
+        windowCap = Math.max(MIN_WINDOW, Math.floor(lastEstimate * 0.7))
+      }
+      try {
+        if (settings.context.auto) await compactPath(wc, conv, pathTo(conv, last.parentId), compactOpts(true, KEEP_TURNS_MANUAL))
+      } catch {
+        /* fall through: trimming still shrinks the next attempt */
+      }
+      reuse = true
+      continue
+    }
     if (err.name === 'AbortError' || ctl.signal.aborted) {
       // Stop pressed: keep what we have; any unfinished tool calls get a result so the history stays valid.
       for (const c of last.toolCalls ?? []) {
@@ -244,7 +420,8 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
       }
       return await end('done')
     }
-    return await end('error', err.message)
+    return await end('error', ov.overflow ? `${err.message}\n\nThe conversation is too long for this model’s context window. Use /compact, start a new chat, or set the window size in Settings → General.` : err.message)
+  }
   }
 
   async function runToolCall(call: ToolCall, assistant: Message) {

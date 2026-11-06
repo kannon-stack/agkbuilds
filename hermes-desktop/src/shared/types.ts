@@ -7,6 +7,7 @@ import type { MemoryItem } from './memory'
 import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skills'
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 import type { SearchResult } from './search'
+import type { ContextSettings, ContextUsage } from './context'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
 /** Reverse-DNS app id (Windows taskbar grouping, macOS bundle id). Keep in sync with electron-builder.config.js. */
@@ -44,8 +45,22 @@ export interface Attachment {
   size: number
 }
 
+/** A summary standing in for the conversation up to (and including) the message that carries it. */
+export interface Compaction {
+  text: string
+  createdAt: number
+  /** Made automatically (vs. /compact). */
+  auto: boolean
+  /** How many messages this summary replaced (cumulative across re-compactions). */
+  messages: number
+  /** Estimated tokens before → after, for display. */
+  tokensBefore: number
+  tokensAfter: number
+}
+
 export interface Message {
   id: string
+  compaction?: Compaction
   /** Position in the conversation tree (null = first message). Missing in old conversations → linked on load. */
   parentId?: string | null
   /** Which child the view follows when this message has several (edits / regenerated answers). */
@@ -149,6 +164,7 @@ export interface Settings {
   appearance: Appearance
   memory: MemorySettings
   skills: SkillsSettings
+  context: ContextSettings
 }
 
 export interface MemorySettings {
@@ -156,7 +172,8 @@ export interface MemorySettings {
   enabled: boolean
 }
 
-export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance' | 'memory' | 'skills'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance' | 'memory' | 'skills' | 'context'>> & {
+  context?: Partial<ContextSettings>
   tools?: Partial<ToolSettings>
   appearance?: Partial<Appearance>
   memory?: Partial<MemorySettings>
@@ -207,6 +224,11 @@ export type ChatEvent =
   | { type: 'meta'; conversationId: string; messageId: string; usage?: UsageInfo; servedBy?: string }
   /** A tool call was created or changed state (approval, running, result). */
   | { type: 'tool_update'; conversationId: string; messageId: string; call: ToolCall }
+  /** Older messages are being summarized (before the answer starts). */
+  | { type: 'compacting'; conversationId: string }
+  | { type: 'compacted'; conversationId: string; messageId: string; compaction: Compaction }
+  /** A heads-up for the user (e.g. history was trimmed to fit). */
+  | { type: 'notice'; conversationId: string; text: string }
   | { type: 'done'; conversationId: string; messageId: string }
   | { type: 'error'; conversationId: string; messageId: string; error: string }
 
@@ -237,6 +259,8 @@ export interface Api {
     search(query: string): Promise<SearchResult[]>
     /** Open a chat positioned so `messageId` is visible (switches branch if needed). */
     reveal(id: string, messageId: string): Promise<Conversation>
+    /** How full the context window is for this chat's current branch. */
+    context(id: string): Promise<ContextUsage | null>
     /** Save as a file (native dialog) or copy the visible branch as Markdown. Cancelling the dialog is not an error. */
     export(id: string, how: 'markdown' | 'json' | 'copy'): Promise<Result<{ path?: string; cancelled?: boolean }>>
   }
@@ -247,6 +271,8 @@ export interface Api {
     edit(req: EditRequest): Promise<Conversation>
     /** Show the branch through this message (an alternative edit / answer). */
     switchBranch(conversationId: string, messageId: string): Promise<Conversation>
+    /** Summarize older messages into a compact note (Claude keeps its place; the full history stays visible). */
+    compact(conversationId: string, instructions?: string): Promise<Result<{ messageId: string; compaction: Compaction }>>
     stop(conversationId: string): Promise<void>
     /** Answer a pending tool-approval prompt. */
     decide(callId: string, decision: ToolDecision): Promise<void>
