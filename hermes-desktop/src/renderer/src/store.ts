@@ -32,10 +32,15 @@ interface State {
   previewTheme: ThemeOverride | null
   mcpStatus: McpServerStatus[]
   toast: string | null
+  /** Message to scroll to and flash (set by search results). */
+  focusId: string | null
 
   init(): Promise<void>
   refreshList(): Promise<void>
   select(id: string): Promise<void>
+  /** Open a chat at a specific message (from search), switching branch if needed. */
+  reveal(conversationId: string, messageId: string): Promise<void>
+  clearFocus(): void
   newChat(): Promise<void>
   remove(id: string): Promise<void>
   rename(id: string, title: string): Promise<void>
@@ -84,6 +89,7 @@ export const useStore = create<State>((set, get) => ({
   previewTheme: null,
   mcpStatus: [],
   toast: null,
+  focusId: null,
 
   async init() {
     const api = window.api
@@ -108,6 +114,15 @@ export const useStore = create<State>((set, get) => ({
   async select(id) {
     const c = await window.api.conversations.get(id)
     if (c) set({ active: c })
+  },
+
+  async reveal(conversationId, messageId) {
+    const c = await window.api.conversations.reveal(conversationId, messageId)
+    set({ active: c, focusId: messageId })
+  },
+
+  clearFocus() {
+    set({ focusId: null })
   },
 
   async newChat() {

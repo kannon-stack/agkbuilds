@@ -24,6 +24,22 @@ export function ChatView() {
     stick.current = true
   }, [active?.id])
 
+  // Arriving from a search result: scroll the message into view and flash it.
+  const { focusId, clearFocus } = useStore()
+  useEffect(() => {
+    if (!focusId) return
+    const el = scroller.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(focusId)}"]`)
+    if (!el) return
+    stick.current = false
+    el.scrollIntoView({ block: 'center' })
+    el.classList.add('flash')
+    const t = setTimeout(() => {
+      el.classList.remove('flash')
+      clearFocus()
+    }, 1800)
+    return () => clearTimeout(t)
+  }, [focusId, path, clearFocus])
+
   const empty = !active || active.messages.length === 0
   const lastId = path.at(-1)?.id
 

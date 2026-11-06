@@ -19,6 +19,7 @@ import type { SkillsSettings } from '../shared/skills'
 import { ANTHROPIC_BASE_URL, normalizeAnthropicOptions } from '../shared/anthropic'
 import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
 import { normalizeTree, pathOf } from '../shared/tree'
+import { searchConversations, type SearchResult } from '../shared/search'
 
 /**
  * File-backed storage. One JSON file per conversation + settings.json.
@@ -260,9 +261,42 @@ export async function getConversation(id: string): Promise<Conversation | null> 
   return c ? normalizeTree(c) : null
 }
 
-export async function saveConversation(c: Conversation): Promise<void> {
-  c.updatedAt = Date.now()
+/** `touch: false` saves without bumping "last active" (e.g. just flipping between branches). */
+export async function saveConversation(c: Conversation, opts: { touch?: boolean } = {}): Promise<void> {
+  if (opts.touch !== false) c.updatedAt = Date.now()
   await writeJson(convPath(c.id), c)
+}
+
+/** All non-empty conversations, re-reading only files that changed (search runs on every keystroke). */
+const readCache = new Map<string, { sig: string; conv: Conversation }>()
+export async function loadAllConversations(): Promise<Conversation[]> {
+  const out: Conversation[] = []
+  const seen = new Set<string>()
+  for (const f of await fs.readdir(convDir())) {
+    if (!f.endsWith('.json')) continue
+    const file = path.join(convDir(), f)
+    seen.add(file)
+    try {
+      const st = await fs.stat(file)
+      const sig = `${st.mtimeMs}:${st.size}`
+      let hit = readCache.get(file)
+      if (!hit || hit.sig !== sig) {
+        const raw = await readJson<Conversation>(file)
+        if (!raw) continue
+        hit = { sig, conv: normalizeTree(raw) }
+        readCache.set(file, hit)
+      }
+      if (hit.conv.messages.length) out.push(hit.conv)
+    } catch {
+      /* file vanished mid-scan */
+    }
+  }
+  for (const k of readCache.keys()) if (!seen.has(k)) readCache.delete(k)
+  return out
+}
+
+export async function searchAll(query: string): Promise<SearchResult[]> {
+  return searchConversations(await loadAllConversations(), query)
 }
 
 export async function createConversation(): Promise<Conversation> {

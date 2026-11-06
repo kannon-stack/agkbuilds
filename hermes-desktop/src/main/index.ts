@@ -151,6 +151,8 @@ function registerIpc() {
     }
   })
 
+  h('conversations:search', (_e, q: string) => (typeof q === 'string' ? store.searchAll(q.slice(0, 200)) : []))
+  h('conversations:reveal', (_e, id: string, messageId: string) => chat.reveal(id, messageId))
   h('conversations:export', (e, id: string, how: 'markdown' | 'json' | 'copy') =>
     expected(async () => {
       const c = await store.getConversation(id)

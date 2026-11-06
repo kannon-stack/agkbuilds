@@ -6,6 +6,7 @@ import type { Appearance, Mode } from './theme'
 import type { MemoryItem } from './memory'
 import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skills'
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
+import type { SearchResult } from './search'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
 /** Reverse-DNS app id (Windows taskbar grouping, macOS bundle id). Keep in sync with electron-builder.config.js. */
@@ -220,6 +221,10 @@ export interface Api {
     rename(id: string, title: string): Promise<void>
     remove(id: string): Promise<void>
     setModel(id: string, providerId: string, model: string): Promise<void>
+    /** Full-text search across every message of every chat (all branches). */
+    search(query: string): Promise<SearchResult[]>
+    /** Open a chat positioned so `messageId` is visible (switches branch if needed). */
+    reveal(id: string, messageId: string): Promise<Conversation>
     /** Save as a file (native dialog) or copy the visible branch as Markdown. Cancelling the dialog is not an error. */
     export(id: string, how: 'markdown' | 'json' | 'copy'): Promise<Result<{ path?: string; cancelled?: boolean }>>
   }

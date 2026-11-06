@@ -13,7 +13,7 @@ import { formatMemoryBlock } from '../shared/memory'
 import { formatSkillCatalog, parseSlash, skillInvocation } from '../shared/skills'
 import { mcp } from './mcp/instance'
 import { decryptKey, getConversation, getProviderRecord, getSettings, saveConversation } from './store'
-import { pathTo, setLeaf, switchTo } from '../shared/tree'
+import { pathOf, pathTo, setLeaf, switchTo } from '../shared/tree'
 import { addUserMessage, editUserMessage, OpError, prepareRegenerate } from './conversationOps'
 
 /** Active generations, keyed by conversation id. One at a time per conversation. */
@@ -330,6 +330,17 @@ export async function regenerate(
   return conv
 }
 
+/** Jump to a message from search: switch branches only if it isn't already on screen. Doesn't count as activity. */
+export async function reveal(conversationId: string, messageId: string): Promise<Conversation> {
+  const conv = await getConversation(conversationId)
+  if (!conv) throw new Error('Conversation not found')
+  if (!conv.messages.some((m) => m.id === messageId)) return conv
+  if (pathOf(conv).some((m) => m.id === messageId) || active.has(conv.id)) return conv
+  switchTo(conv, messageId)
+  await saveConversation(conv, { touch: false })
+  return conv
+}
+
 /** Show another branch (the one through `messageId`). */
 export async function switchBranch(conversationId: string, messageId: string): Promise<Conversation> {
   const conv = await getConversation(conversationId)
@@ -337,7 +348,7 @@ export async function switchBranch(conversationId: string, messageId: string): P
   if (active.has(conv.id)) throw new Error('Wait for the response to finish first')
   if (!conv.messages.some((m) => m.id === messageId)) throw new OpError('Message not found')
   switchTo(conv, messageId)
-  await saveConversation(conv)
+  await saveConversation(conv, { touch: false })
   return conv
 }
 

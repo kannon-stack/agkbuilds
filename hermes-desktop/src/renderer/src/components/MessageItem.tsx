@@ -138,7 +138,7 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, si
   const toolsActive = calls.some((c) => c.status === 'running' || c.status === 'awaiting_approval')
 
   return (
-    <div className={`msg msg-assistant ${continuation ? 'cont' : ''}`}>
+    <div className={`msg msg-assistant ${continuation ? 'cont' : ''}`} data-message-id={message.id}>
       <div className="avatar" aria-hidden style={continuation ? { visibility: 'hidden' } : undefined}>
         ✦
       </div>
