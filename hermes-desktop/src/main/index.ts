@@ -143,6 +143,8 @@ function registerIpc() {
 
   h('chat:send', (e, req) => chat.sendMessage(e.sender, req))
   h('chat:regenerate', (e, req) => chat.regenerate(e.sender, req))
+  h('chat:edit', (e, req) => chat.editMessage(e.sender, req))
+  h('chat:switchBranch', (_e, id: string, messageId: string) => chat.switchBranch(id, messageId))
   h('chat:stop', (_e, id: string) => chat.stop(id))
   h('chat:decide', (_e, callId: string, decision) => chat.decide(callId, decision))
 

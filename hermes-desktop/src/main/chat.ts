@@ -13,6 +13,8 @@ import { formatMemoryBlock } from '../shared/memory'
 import { formatSkillCatalog, parseSlash, skillInvocation } from '../shared/skills'
 import { mcp } from './mcp/instance'
 import { decryptKey, getConversation, getProviderRecord, getSettings, saveConversation } from './store'
+import { pathTo, setLeaf, switchTo } from '../shared/tree'
+import { addUserMessage, editUserMessage, OpError, prepareRegenerate } from './conversationOps'
 
 /** Active generations, keyed by conversation id. One at a time per conversation. */
 const active = new Map<string, AbortController>()
@@ -23,11 +25,6 @@ const chatAllowed = new Map<string, Set<string>>()
 
 const emit = (wc: WebContents, e: ChatEvent) => {
   if (!wc.isDestroyed()) wc.send('chat:event', e)
-}
-
-function titleFrom(text: string): string {
-  const t = text.replace(/\s+/g, ' ').trim()
-  return t.length > 48 ? `${t.slice(0, 47)}…` : t || 'New chat'
 }
 
 /** Persist the partial assistant text at most this often while streaming. */
@@ -73,7 +70,8 @@ export function decide(callId: string, decision: ToolDecision): void {
   pendingApprovals.get(callId)?.(decision)
 }
 
-async function generate(wc: WebContents, conv: Conversation, providerId?: string, model?: string) {
+/** Stream an answer as a new child of `parentId` (the user message being answered). */
+async function generate(wc: WebContents, conv: Conversation, parentId: string, providerId?: string, model?: string) {
   const settings = await getSettings()
   const provider = await getProviderRecord(providerId ?? conv.providerId ?? settings.activeProviderId)
   const useModel = model ?? conv.model ?? provider?.defaultModel ?? ''
@@ -84,18 +82,19 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
   active.set(conv.id, ctl)
   const allowed = chatAllowed.get(conv.id) ?? chatAllowed.set(conv.id, new Set()).get(conv.id)!
 
-  const newAssistant = async (): Promise<Message> => {
-    const m: Message = { id: randomUUID(), role: 'assistant', content: '', createdAt: Date.now(), model: useModel }
+  const newAssistant = async (parent: string): Promise<Message> => {
+    const m: Message = { id: randomUUID(), role: 'assistant', content: '', createdAt: Date.now(), model: useModel, parentId: parent }
     conv.messages.push(m)
+    setLeaf(conv, m.id)
     await saveConversation(conv)
-    emit(wc, { type: 'start', conversationId: conv.id, messageId: m.id })
+    emit(wc, { type: 'start', conversationId: conv.id, messageId: m.id, parentId: parent })
     return m
   }
   const updateCall = (m: Message, call: ToolCall) => {
     emit(wc, { type: 'tool_update', conversationId: conv.id, messageId: m.id, call: { ...call } })
   }
 
-  let last = await newAssistant()
+  let last = await newAssistant(parentId)
   const end = async (kind: 'done' | 'error', error?: string) => {
     active.delete(conv.id)
     if (kind === 'error') last.error = error
@@ -135,11 +134,11 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
 
   try {
     for (let step = 0; step < MAX_TOOL_STEPS; step++) {
-      if (step > 0) last = await newAssistant()
+      if (step > 0) last = await newAssistant(last.id)
       const assistant = last
 
       // History = everything before this (still empty) assistant message.
-      const history = conv.messages.slice(0, conv.messages.indexOf(assistant))
+      const history = pathTo(conv, assistant.parentId)
       const wire: WireMessage[] = [...(system ? [{ role: 'system' as const, content: system }] : []), ...toWire(history)]
 
       let calls: ParsedToolCall[] = []
@@ -284,22 +283,37 @@ export async function sendMessage(
   const content = req.content.trim()
   if (!content) throw new Error('Empty message')
 
-  // "/skill-name …" invokes a skill directly (works even with tools off). Unknown commands are plain text.
-  let skill: Message['skill']
-  const slash = parseSlash(content)
-  if (slash) {
-    const settings = await getSettings()
-    if (settings.skills.enabled) {
-      const rec = activeSkills(await services.skills.scan(settings.tools.workspace), settings.skills).find((r) => r.name === slash.command)
-      if (rec) skill = { name: rec.name, text: skillPayload(rec) }
-    }
-  }
-
-  if (conv.messages.length === 0) conv.title = titleFrom(content)
-  conv.messages.push({ id: randomUUID(), role: 'user', content, createdAt: Date.now(), ...(skill ? { skill } : {}) })
+  const skill = await resolveSkill(content)
+  const user = addUserMessage(conv, { content, ...(skill ? { skill } : {}) })
   await saveConversation(conv)
 
-  void generate(wc, conv, req.providerId, req.model) // streams via events
+  void generate(wc, conv, user.id, req.providerId, req.model) // streams via events
+  return conv
+}
+
+/** Resolve a "/skill" prefix into a snapshot of the skill's instructions (works even with tools off). */
+async function resolveSkill(content: string): Promise<Message['skill']> {
+  const slash = parseSlash(content)
+  if (!slash) return undefined
+  const settings = await getSettings()
+  if (!settings.skills.enabled) return undefined
+  const rec = activeSkills(await services.skills.scan(settings.tools.workspace), settings.skills).find((r) => r.name === slash.command)
+  return rec ? { name: rec.name, text: skillPayload(rec) } : undefined
+}
+
+export async function editMessage(
+  wc: WebContents,
+  req: { conversationId: string; messageId: string; content: string; providerId?: string; model?: string }
+): Promise<Conversation> {
+  const conv = await getConversation(req.conversationId)
+  if (!conv) throw new Error('Conversation not found')
+  if (active.has(conv.id)) throw new Error('A response is already being generated')
+  const content = req.content.trim()
+  const orig = conv.messages.find((m) => m.id === req.messageId)
+  if (!content && !orig?.attachments?.length) throw new Error('Empty message')
+  const user = editUserMessage(conv, req.messageId, { content, skill: await resolveSkill(content) })
+  await saveConversation(conv)
+  void generate(wc, conv, user.id, req.providerId, req.model)
   return conv
 }
 
@@ -310,11 +324,20 @@ export async function regenerate(
   const conv = await getConversation(req.conversationId)
   if (!conv) throw new Error('Conversation not found')
   if (active.has(conv.id)) throw new Error('A response is already being generated')
-  // Drop everything after the last user turn (the assistant text and any tool rounds).
-  while (conv.messages.at(-1)?.role === 'assistant') conv.messages.pop()
-  if (conv.messages.at(-1)?.role !== 'user') throw new Error('Nothing to regenerate')
+  const user = prepareRegenerate(conv)
   await saveConversation(conv)
-  void generate(wc, conv, req.providerId, req.model)
+  void generate(wc, conv, user.id, req.providerId, req.model)
+  return conv
+}
+
+/** Show another branch (the one through `messageId`). */
+export async function switchBranch(conversationId: string, messageId: string): Promise<Conversation> {
+  const conv = await getConversation(conversationId)
+  if (!conv) throw new Error('Conversation not found')
+  if (active.has(conv.id)) throw new Error('Wait for the response to finish first')
+  if (!conv.messages.some((m) => m.id === messageId)) throw new OpError('Message not found')
+  switchTo(conv, messageId)
+  await saveConversation(conv)
   return conv
 }
 

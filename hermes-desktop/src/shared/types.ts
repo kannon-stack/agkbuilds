@@ -35,8 +35,21 @@ export interface ToolCall {
 
 export type ToolDecision = 'allow' | 'allow_chat' | 'deny'
 
+export interface Attachment {
+  /** Content hash (sha256 hex) — also the file name in the attachments folder. */
+  id: string
+  name: string
+  mime: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  size: number
+}
+
 export interface Message {
   id: string
+  /** Position in the conversation tree (null = first message). Missing in old conversations → linked on load. */
+  parentId?: string | null
+  /** Which child the view follows when this message has several (edits / regenerated answers). */
+  activeChild?: string
+  attachments?: Attachment[]
   role: Role
   content: string
   createdAt: number
@@ -76,7 +89,12 @@ export interface Conversation {
   title: string
   createdAt: number
   updatedAt: number
+  /** Every message node of every branch. The visible chat is the path from the root to `leafId`. */
   messages: Message[]
+  /** Last message of the branch being shown (defaults to the last node). */
+  leafId?: string
+  /** Active first message when the conversation's opening message was edited. */
+  rootChild?: string
   providerId?: string
   model?: string
   /** Per-conversation override of the global system prompt. */
@@ -162,6 +180,15 @@ export interface SendRequest {
   model?: string
 }
 
+export interface EditRequest {
+  conversationId: string
+  /** The user message being edited; the edit becomes a sibling branch. */
+  messageId: string
+  content: string
+  providerId?: string
+  model?: string
+}
+
 export interface RegenerateRequest {
   conversationId: string
   providerId?: string
@@ -169,7 +196,7 @@ export interface RegenerateRequest {
 }
 
 export type ChatEvent =
-  | { type: 'start'; conversationId: string; messageId: string }
+  | { type: 'start'; conversationId: string; messageId: string; parentId: string | null }
   | { type: 'delta'; conversationId: string; messageId: string; text: string }
   | { type: 'thinking'; conversationId: string; messageId: string; text: string }
   | { type: 'meta'; conversationId: string; messageId: string; usage?: UsageInfo; servedBy?: string }
@@ -197,6 +224,10 @@ export interface Api {
   chat: {
     send(req: SendRequest): Promise<Conversation>
     regenerate(req: RegenerateRequest): Promise<Conversation>
+    /** Rewrite a user message as a new branch and answer it. */
+    edit(req: EditRequest): Promise<Conversation>
+    /** Show the branch through this message (an alternative edit / answer). */
+    switchBranch(conversationId: string, messageId: string): Promise<Conversation>
     stop(conversationId: string): Promise<void>
     /** Answer a pending tool-approval prompt. */
     decide(callId: string, decision: ToolDecision): Promise<void>

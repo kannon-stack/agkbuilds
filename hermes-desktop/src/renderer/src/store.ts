@@ -4,6 +4,7 @@ import { sanitizeAppearance, type Appearance } from '../../shared/theme'
 import type { MemoryItem } from '../../shared/memory'
 import type { SkillSummary } from '../../shared/skills'
 import type { ThemeOverride } from './applyTheme'
+import { setLeaf } from '../../shared/tree'
 import type {
   ChatEvent,
   ConnectionResult,
@@ -40,6 +41,10 @@ interface State {
   rename(id: string, title: string): Promise<void>
   send(text: string): Promise<void>
   regenerate(): Promise<void>
+  /** Rewrite a user message: the edit becomes a new branch and is answered. */
+  edit(messageId: string, text: string): Promise<void>
+  /** Show an alternative edit / answer. */
+  switchBranch(messageId: string): Promise<void>
   stop(): Promise<void>
   decide(callId: string, decision: ToolDecision): Promise<void>
   setModel(providerId: string, model: string): Promise<void>
@@ -160,6 +165,32 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  async edit(messageId, text) {
+    const { active } = get()
+    if (!active || get().generating[active.id]) return
+    const { providerId, model } = effectiveModel(get())
+    set((s) => ({ generating: { ...s.generating, [active.id]: true } }))
+    try {
+      const conv = await window.api.chat.edit({ conversationId: active.id, messageId, content: text, providerId, model })
+      set({ active: conv })
+      void get().refreshList()
+    } catch (e) {
+      set((s) => ({ generating: { ...s.generating, [active.id]: false } }))
+      get().showToast((e as Error).message)
+    }
+  },
+
+  async switchBranch(messageId) {
+    const { active } = get()
+    if (!active || get().generating[active.id]) return
+    try {
+      const conv = await window.api.chat.switchBranch(active.id, messageId)
+      set((s) => (s.active?.id === conv.id ? { active: conv } : {}))
+    } catch (e) {
+      get().showToast((e as Error).message)
+    }
+  },
+
   async stop() {
     const { active } = get()
     if (active) await window.api.chat.stop(active.id)
@@ -217,15 +248,9 @@ export const useStore = create<State>((set, get) => ({
     if (e.type === 'start') {
       set((s) => ({ generating: { ...s.generating, [e.conversationId]: true } }))
       if (active?.id === e.conversationId && !active.messages.some((m) => m.id === e.messageId)) {
-        set({
-          active: {
-            ...active,
-            messages: [
-              ...active.messages,
-              { id: e.messageId, role: 'assistant', content: '', createdAt: Date.now() }
-            ]
-          }
-        })
+        // New node in the tree; it becomes the visible leaf (copy so React sees a change).
+        const next = { ...active, messages: [...active.messages.map((m) => ({ ...m })), { id: e.messageId, role: 'assistant' as const, content: '', createdAt: Date.now(), parentId: e.parentId }] }
+        set({ active: setLeaf(next, e.messageId) })
       }
       return
     }

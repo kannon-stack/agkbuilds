@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Message } from '../../../shared/types'
+import type { SiblingInfo } from '../../../shared/tree'
 import { Markdown } from './Markdown'
 import { ToolCallCard } from './ToolCallCard'
 
@@ -9,7 +10,75 @@ interface Props {
   isLast: boolean
   /** Previous message was also the assistant (a tool round) — hide the avatar. */
   continuation: boolean
+  /** A response is being generated: editing and branch switching are paused. */
+  busy: boolean
+  siblings: SiblingInfo
   onRegenerate(): void
+  onEdit(messageId: string, text: string): void
+  onSwitch(messageId: string): void
+}
+
+/** ‹ 2/3 › — flip between alternative edits / answers at this point of the conversation. */
+function BranchNav({ info, id, disabled, onSwitch }: { info: SiblingInfo; id: string; disabled: boolean; onSwitch(id: string): void }) {
+  if (info.count < 2) return null
+  const go = (d: number) => onSwitch(info.ids[info.index - 1 + d])
+  return (
+    <span className="branch-nav" data-testid="branch-nav">
+      <button className="link-btn" aria-label="Previous version" disabled={disabled || info.index <= 1} onClick={() => go(-1)}>
+        ‹
+      </button>
+      <span aria-label={`Version ${info.index} of ${info.count}`}>
+        {info.index}/{info.count}
+      </span>
+      <button className="link-btn" aria-label="Next version" disabled={disabled || info.index >= info.count} onClick={() => go(1)}>
+        ›
+      </button>
+    </span>
+  )
+}
+
+function Editor({ initial, onSave, onCancel }: { initial: string; onSave(text: string): void; onCancel(): void }) {
+  const [text, setText] = useState(initial)
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [])
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 260)}px`
+  }, [text])
+  const save = () => text.trim() && onSave(text)
+  return (
+    <div className="editor">
+      <textarea
+        ref={ref}
+        value={text}
+        aria-label="Edit message"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onCancel()
+          else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            save()
+          }
+        }}
+      />
+      <div className="editor-actions">
+        <button className="btn" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn primary" disabled={!text.trim()} onClick={save}>
+          Save &amp; send
+        </button>
+      </div>
+      <p className="muted editor-hint">Your original message and its replies are kept — switch back with ‹ ›.</p>
+    </div>
+  )
 }
 
 const n = (v?: number) => (v ?? 0).toLocaleString()
@@ -22,8 +91,9 @@ function Usage({ u }: { u: NonNullable<Message['usage']> }) {
   )
 }
 
-export function MessageItem({ message, streaming, isLast, continuation, onRegenerate }: Props) {
+export function MessageItem({ message, streaming, isLast, continuation, busy, siblings, onRegenerate, onEdit, onSwitch }: Props) {
   const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
   const isUser = message.role === 'user'
   const copy = async () => {
     await navigator.clipboard.writeText(message.content)
@@ -34,9 +104,31 @@ export function MessageItem({ message, streaming, isLast, continuation, onRegene
   if (isUser) {
     return (
       <div className="msg msg-user">
-        <div className="bubble-col">
+        <div className={`bubble-col ${editing ? 'editing' : ''}`} data-message-id={message.id}>
           {message.skill && <span className="skill-chip" title="This message invoked a skill">⚡ {message.skill.name}</span>}
-          <div className="bubble">{message.content}</div>
+          {editing ? (
+            <Editor
+              initial={message.content}
+              onCancel={() => setEditing(false)}
+              onSave={(t) => {
+                setEditing(false)
+                onEdit(message.id, t)
+              }}
+            />
+          ) : (
+            <div className="bubble">{message.content}</div>
+          )}
+          {!editing && (
+            <div className="msg-actions user-actions">
+              <BranchNav info={siblings} id={message.id} disabled={busy} onSwitch={onSwitch} />
+              <button className="link-btn" disabled={busy} onClick={copy}>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button className="link-btn" disabled={busy} onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -79,7 +171,8 @@ export function MessageItem({ message, streaming, isLast, continuation, onRegene
           </div>
         )}
         {!streaming && !toolsActive && (
-          <div className="msg-actions">
+          <div className={`msg-actions ${siblings.count > 1 ? 'pinned' : ''}`}>
+            <BranchNav info={siblings} id={message.id} disabled={busy} onSwitch={onSwitch} />
             {message.content && (
               <button className="link-btn" onClick={copy}>
                 {copied ? 'Copied' : 'Copy'}

@@ -16,6 +16,8 @@ const api: Api = {
   chat: {
     send: (req) => invoke('chat:send', req),
     regenerate: (req) => invoke('chat:regenerate', req),
+    edit: (req) => invoke('chat:edit', req),
+    switchBranch: (id, messageId) => invoke('chat:switchBranch', id, messageId),
     stop: (id) => invoke('chat:stop', id),
     decide: (callId, decision) => invoke('chat:decide', callId, decision),
     onEvent: (cb) => {

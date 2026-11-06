@@ -18,6 +18,7 @@ import type { MemorySettings } from '../shared/types'
 import type { SkillsSettings } from '../shared/skills'
 import { ANTHROPIC_BASE_URL, normalizeAnthropicOptions } from '../shared/anthropic'
 import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
+import { normalizeTree, pathOf } from '../shared/tree'
 
 /**
  * File-backed storage. One JSON file per conversation + settings.json.
@@ -255,7 +256,8 @@ export async function removeProvider(id: string): Promise<Settings> {
 const convPath = (id: string) => path.join(convDir(), `${id.replace(/[^a-zA-Z0-9-]/g, '')}.json`)
 
 export async function getConversation(id: string): Promise<Conversation | null> {
-  return readJson<Conversation>(convPath(id))
+  const c = await readJson<Conversation>(convPath(id))
+  return c ? normalizeTree(c) : null
 }
 
 export async function saveConversation(c: Conversation): Promise<void> {
@@ -279,9 +281,10 @@ export async function listConversations(): Promise<ConversationSummary[]> {
   const out: ConversationSummary[] = []
   for (const f of files) {
     if (!f.endsWith('.json')) continue
-    const c = await readJson<Conversation>(path.join(convDir(), f))
-    if (!c || c.messages.length === 0) continue // empty drafts aren't listed
-    const last = [...c.messages].reverse().find((m) => m.content)
+    const raw = await readJson<Conversation>(path.join(convDir(), f))
+    if (!raw || raw.messages.length === 0) continue // empty drafts aren't listed
+    const c = normalizeTree(raw)
+    const last = [...pathOf(c)].reverse().find((m) => m.content)
     out.push({
       id: c.id,
       title: c.title,

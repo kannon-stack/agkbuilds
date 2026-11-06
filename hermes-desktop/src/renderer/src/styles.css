@@ -120,6 +120,16 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
 .link-btn { background: none; border: 0; padding: 0; color: var(--muted); font-size: calc(12px * var(--font-scale, 1)); }
 .link-btn:hover { color: var(--text); }
+.link-btn:disabled { opacity: .4; cursor: default; }
+.user-actions { justify-content: flex-end; }
+.msg-actions.pinned { opacity: .85; }
+.branch-nav { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: calc(12px * var(--font-scale, 1)); font-variant-numeric: tabular-nums; }
+.branch-nav .link-btn { font-size: calc(15px * var(--font-scale, 1)); line-height: 1; padding: 0 2px; }
+.bubble-col.editing { width: min(82%, 640px); max-width: 100%; align-items: stretch; }
+.editor { display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--radius-lg); padding: 10px; }
+.editor textarea { width: 100%; resize: none; background: transparent; border: 0; outline: 0; color: var(--text); font: inherit; line-height: 1.5; min-height: 52px; }
+.editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.editor-hint { margin: 0; font-size: calc(11.5px * var(--font-scale, 1)); }
 .msg-error { margin-top: 8px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger), transparent 55%); background: color-mix(in srgb, var(--danger), transparent 90%); border-radius: var(--radius); color: var(--danger); font-size: calc(13px * var(--font-scale, 1)); overflow-wrap: anywhere; }
 .caret { display: inline-block; width: 8px; height: 1.05em; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: blink 1s steps(2) infinite; border-radius: 1px; }
 .thinking { display: inline-flex; gap: 5px; padding: 8px 0; }
