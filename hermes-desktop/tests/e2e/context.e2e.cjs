@@ -38,7 +38,14 @@ const check = (c, m) => { if (!c) { console.error('✗ FAIL:', m); process.exitC
   }
   let { app, win } = await launch()
   const settle = () => win.waitForFunction(() => !document.querySelector('.send.stop') && !document.querySelector('.caret'), null, { timeout: 30000 })
-  const send = async t => { await win.fill('.composer textarea', t); await win.keyboard.press('Enter'); await win.waitForTimeout(250); await settle() }
+  // Wait until the message is really in the thread before waiting for the reply; otherwise a fast check can pass before
+  // generation starts and the next send is refused ("already being generated"), silently shortening the conversation.
+  const send = async t => {
+    const n = await win.$$eval('.msg-user', e => e.length)
+    await win.fill('.composer textarea', t); await win.keyboard.press('Enter')
+    await win.waitForFunction(n => document.querySelectorAll('.msg-user').length > n, n, { timeout: 15000 })
+    await settle()
+  }
   const big = (tag) => `${tag} ` + 'lorem ipsum dolor sit amet '.repeat(95) // ~2.5k chars
   const normal = () => reqs.filter(r => !r.isSummary)
   const summaries = () => reqs.filter(r => r.isSummary)
@@ -49,6 +56,7 @@ const check = (c, m) => { if (!c) { console.error('✗ FAIL:', m); process.exitC
 
   // ---- automatic summarizing
   for (let i = 0; i < 6; i++) await send(big(`turn${i}`))
+  if (!summaries().length) console.log('diagnostics:', JSON.stringify({ requests: reqs.length, users: await win.$$eval('.msg-user', e => e.length), toast: await win.$eval('.toast', e => e.textContent).catch(() => null), meter: await win.textContent('.ctx-chip').catch(() => null), settings: (await win.evaluate(() => window.api.settings.get())).context }))
   check(summaries().length >= 1, `auto-summarized (${summaries().length} summarizer request(s))`)
   await win.waitForSelector('[data-testid=compaction]')
   const divTxt = await win.textContent('[data-testid=compaction]')
