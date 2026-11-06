@@ -11,7 +11,7 @@ A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 | Question | Decision | Why |
 |---|---|---|
 | Desktop framework | **Electron** + React + TypeScript + Vite (`electron-vite`) | "Most reliable": bundled Chromium renders identically on every OS. Tauri uses the system webview (WebKitGTK on Linux is the weak spot). Cost: ~100 MB installer. |
-| v1 backend | **One generic OpenAI-compatible provider** (`/chat/completions` + `/models`), preset to 9router at `http://localhost:20128/v1` | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak this. A "permanent" backend later = another provider entry, not a rewrite. |
+| Providers | **Two kinds**: generic **OpenAI-compatible** (`/chat/completions` + `/models`; preset 9router at `http://localhost:20128/v1`) and the native **Anthropic Messages API** (official `@anthropic-ai/sdk`) | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak the first. Claude gets its own adapter for features the OpenAI shape can't carry: thinking blocks, prompt caching, effort, refusal handling. A conversation can switch providers mid-way. |
 | Persistence | JSON files in the OS user-data dir (`settings.json`, `conversations/<id>.json`), atomic writes | Zero native deps (no `better-sqlite3` rebuild pain). Hidden behind `src/main/store.ts` so SQLite can replace it when we need search/memory. |
 | State (UI) | Zustand | Small; chat streaming is a stream of tiny updates. |
 | Styling | Plain CSS with design tokens (`:root` variables) | Theming/customization = swapping variables. No CSS-framework lock-in. |
@@ -114,6 +114,35 @@ agent loop, the same approval cards and the same policy system. Uses the officia
 
 Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pure helpers),
 `src/renderer/src/components/McpSettings.tsx`. Tests use a real SDK-based fixture server over stdio and HTTP.
+
+## Claude (native Anthropic provider)
+
+Settings → Providers → **＋ Add Claude** (or Type → *Claude*). Code: `src/main/anthropic.ts` (client, streaming, history conversion),
+`src/shared/anthropic.ts` (options, gating). Everything else — tools, MCP, memory, skills, approvals — works unchanged.
+
+- **Streaming + tools:** `messages.stream`; text and *reasoning-summary* deltas stream to the UI; tool calls use the same approval-gated loop
+  (`tool_use` → `tool_result` blocks in **one** user message).
+- **Faithful replay (preserved thinking):** the API checks that earlier turns weren't edited and thinking blocks carry signatures. Each assistant
+  turn's **raw content blocks are stored in the conversation file and replayed verbatim** (`Message.raw`), never rebuilt from text. Failed, partial
+  or refused turns are skipped. History from another provider is converted (and Claude-only blocks never leak out).
+- **Request shape (per the current API):** `system` + top-level automatic **prompt caching**; **no `temperature`/`top_p`/`top_k`** (newer models
+  reject them — the temperature slider only affects OpenAI-compatible providers); `max_tokens = min(64 000, model limit)` from the **Models API**
+  (cached); optional **effort** (`output_config.effort`) and **reasoning summaries** (`thinking: adaptive, display: summarized`) — both skipped when
+  the model's capabilities say it doesn't support them; model list in the API's own order (newest first).
+- **Refusals:** `stop_reason: "refusal"` is shown as a clear message with its category and isn't replayed. **Server-side refusal fallback**
+  (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) is on by default **only** for the official API URL and the models that support it
+  (Fable/Mythos 5.x, Opus 5.x, Sonnet 5.5); a reply produced by the fallback shows "↪ answered by <model>". If an account rejects the beta
+  with a 400 mentioning it, the request is retried once without it.
+- **Errors & auth:** typed SDK errors → plain messages (401 key, 403, 404 model, 429, 529 overloaded, unreachable, output-limit during a tool
+  call, context window exceeded). The key lives encrypted in the main process like every other provider key; leaving it blank falls back to the
+  SDK's own resolution (`ANTHROPIC_API_KEY`, etc.).
+- **Usage:** each answer shows input/output/cached token counts.
+- **Not done:** `eager_input_streaming` for tools (we don't render tool input as it streams, so it adds nothing), batches, files/citations, server
+  tools (web search/code execution), vision input, `thinking` budgets for pre-4.6 models (Haiku 4.5: reasoning summaries won't work there),
+  Bedrock/Vertex/Foundry clients (use the OpenAI-compatible kind with a gateway, or a custom API URL).
+- **Verified:** 33 unit tests against the real SDK talking to a local fake of the API (headers, bodies, SSE, errors, abort, fallback + retry) and
+  an end-to-end run in the real app. **Not verified against the live Anthropic API** (no key in the build environment) — the first real call is the
+  remaining check, especially the fallback beta and capability fields.
 
 ## Memory & skills
 

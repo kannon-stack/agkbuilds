@@ -16,6 +16,7 @@ import type {
 import type { McpServer, McpServerInput } from '../shared/mcp'
 import type { MemorySettings } from '../shared/types'
 import type { SkillsSettings } from '../shared/skills'
+import { ANTHROPIC_BASE_URL, normalizeAnthropicOptions } from '../shared/anthropic'
 import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
 
 /**
@@ -40,6 +41,7 @@ interface SettingsFile {
 const DEFAULT_PROVIDER: ProviderRecord = {
   id: 'default',
   name: '9router (local)',
+  kind: 'openai',
   baseUrl: 'http://localhost:20128/v1',
   defaultModel: ''
 }
@@ -128,6 +130,8 @@ export interface McpServerRecord {
 async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
+  // Providers saved before native Claude support have no `kind`: they are OpenAI-compatible.
+  merged.providers = (f?.providers ?? merged.providers).map((p) => ({ ...p, kind: p.kind === 'anthropic' ? 'anthropic' : 'openai', ...(p.kind === 'anthropic' ? { options: normalizeAnthropicOptions(p.options) } : {}) }))
   merged.tools = { ...DEFAULTS.tools, ...(f?.tools ?? {}), policies: { ...(f?.tools?.policies ?? {}) } }
   merged.memory = { enabled: f?.memory?.enabled !== false }
   merged.skills = cleanSkills(f?.skills)
@@ -207,14 +211,19 @@ export async function saveProvider(input: ProviderInput): Promise<Settings> {
   const f = await loadSettingsFile()
   const baseUrl = input.baseUrl.trim().replace(/\/+$/, '')
   const existing = input.id ? f.providers.find((p) => p.id === input.id) : undefined
+  const kind: ProviderRecord['kind'] = (input.kind ?? existing?.kind) === 'anthropic' ? 'anthropic' : 'openai'
   const rec: ProviderRecord = existing ?? {
     id: randomUUID(),
     name: '',
+    kind,
     baseUrl: '',
     defaultModel: ''
   }
+  rec.kind = kind
   rec.name = input.name.trim() || 'Untitled provider'
-  rec.baseUrl = baseUrl
+  rec.baseUrl = baseUrl || (rec.kind === 'anthropic' ? ANTHROPIC_BASE_URL : '')
+  if (rec.kind === 'anthropic') rec.options = normalizeAnthropicOptions(input.options ?? rec.options)
+  else delete rec.options
   rec.defaultModel = input.defaultModel.trim()
   if (input.apiKey !== undefined) {
     rec.apiKey = input.apiKey ? encryptKey(input.apiKey) : undefined

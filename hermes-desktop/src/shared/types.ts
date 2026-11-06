@@ -1,6 +1,7 @@
 // Types shared by main, preload and renderer. Keep this file dependency-free.
 
 import type { ToolPolicy } from './toolMeta'
+import type { AnthropicOptions, ProviderKind, UsageInfo } from './anthropic'
 import type { Appearance, Mode } from './theme'
 import type { MemoryItem } from './memory'
 import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skills'
@@ -45,6 +46,13 @@ export interface Message {
   error?: string
   /** Tool calls the assistant made in this turn (with their results). */
   toolCalls?: ToolCall[]
+  /** Readable reasoning summary (Claude, when enabled). */
+  thinking?: string
+  /** Provider-native response blocks, replayed verbatim on later turns (Claude: thinking blocks carry signatures that must round-trip). */
+  raw?: unknown[]
+  usage?: UsageInfo
+  /** Set when a refusal fallback model produced this answer. */
+  servedBy?: string
   /** User message that invoked a skill with /name — instructions are snapshotted so history stays reproducible. */
   skill?: { name: string; text: string }
 }
@@ -84,6 +92,10 @@ export type ConversationSummary = Pick<
 export interface ProviderRecord {
   id: string
   name: string
+  /** Wire protocol: generic OpenAI-compatible, or the native Anthropic Messages API. */
+  kind: ProviderKind
+  /** Claude-specific settings (kind === 'anthropic'). */
+  options?: AnthropicOptions
   /** OpenAI-compatible base URL, e.g. http://localhost:20128/v1 */
   baseUrl: string
   defaultModel: string
@@ -135,6 +147,8 @@ export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpS
 export interface ProviderInput {
   id?: string
   name: string
+  kind?: ProviderKind
+  options?: AnthropicOptions
   baseUrl: string
   defaultModel: string
   /** undefined = leave key unchanged, '' = clear it. */
@@ -157,6 +171,8 @@ export interface RegenerateRequest {
 export type ChatEvent =
   | { type: 'start'; conversationId: string; messageId: string }
   | { type: 'delta'; conversationId: string; messageId: string; text: string }
+  | { type: 'thinking'; conversationId: string; messageId: string; text: string }
+  | { type: 'meta'; conversationId: string; messageId: string; usage?: UsageInfo; servedBy?: string }
   /** A tool call was created or changed state (approval, running, result). */
   | { type: 'tool_update'; conversationId: string; messageId: string; call: ToolCall }
   | { type: 'done'; conversationId: string; messageId: string }
@@ -231,6 +247,6 @@ export interface Api {
   models: {
     list(providerId: string): Promise<ConnectionResult>
     /** Test arbitrary (possibly unsaved) connection details. */
-    test(baseUrl: string, apiKey: string | undefined, providerId?: string): Promise<ConnectionResult>
+    test(baseUrl: string, apiKey: string | undefined, providerId?: string, kind?: ProviderKind): Promise<ConnectionResult>
   }
 }

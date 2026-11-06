@@ -14,8 +14,9 @@ Download the installer for your OS from the project's GitHub **Releases** (or bu
 | **macOS** 12+ (Intel & Apple silicon) | `Talaria-<v>-mac-<arch>.dmg` or `.zip` | Unsigned builds are blocked by Gatekeeper: right-click the app → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Talaria.app`. |
 | **Linux** x64 | `.AppImage`, `.deb`, or `.tar.gz` | AppImage: `chmod +x Talaria-*.AppImage && ./Talaria-*.AppImage`. Debian/Ubuntu: `sudo apt install ./Talaria-*.deb`. |
 
-First launch: **Settings → Providers** → set the base URL (default `http://localhost:20128/v1`), key, **Test connection**,
-pick a model.
+First launch: **Settings → Providers**.
+- **Claude:** **＋ Add Claude**, paste your Anthropic API key, **Test connection**, pick a model (default `claude-opus-5-5`).
+- **Anything OpenAI-compatible** (9router, Ollama, OpenRouter…): set the base URL (default `http://localhost:20128/v1`), key, **Test connection**, pick a model.
 
 ### Where your data lives
 Chats, settings, memory and skills are plain files in the app's data folder (also reachable from **Settings → General →

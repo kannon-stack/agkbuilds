@@ -71,7 +71,7 @@ const api: Api = {
   },
   models: {
     list: (providerId) => invoke('models:list', providerId),
-    test: (baseUrl, apiKey, providerId) => invoke('models:test', baseUrl, apiKey, providerId)
+    test: (baseUrl, apiKey, providerId, kind) => invoke('models:test', baseUrl, apiKey, providerId, kind)
   }
 }
 

@@ -8,6 +8,8 @@ import type { ConnectionResult } from '../shared/types'
 import * as store from './store'
 import * as chat from './chat'
 import { fetchModels } from './openai'
+import { listClaudeModels } from './anthropic'
+import type { ProviderKind } from '../shared/anthropic'
 import { mcp } from './mcp/instance'
 import { parseImport } from './mcp/util'
 import { resolveAppearance } from '../shared/theme'
@@ -75,12 +77,12 @@ async function createWindow(): Promise<BrowserWindow> {
 async function listFor(providerId: string): Promise<ConnectionResult> {
   const p = await store.getProviderRecord(providerId)
   if (!p) return { ok: false, models: [], error: 'Unknown provider' }
-  return testConnection(p.baseUrl, store.decryptKey(p))
+  return testConnection(p.baseUrl, store.decryptKey(p), p.kind)
 }
 
-async function testConnection(baseUrl: string, apiKey?: string): Promise<ConnectionResult> {
+async function testConnection(baseUrl: string, apiKey?: string, kind: ProviderKind = 'openai'): Promise<ConnectionResult> {
   try {
-    return { ok: true, models: await fetchModels(baseUrl, apiKey) }
+    return { ok: true, models: kind === 'anthropic' ? await listClaudeModels(baseUrl, apiKey) : await fetchModels(baseUrl, apiKey) }
   } catch (e) {
     return { ok: false, models: [], error: (e as Error).message }
   }
@@ -231,14 +233,14 @@ function registerIpc() {
   })
 
   h('models:list', (_e, providerId: string) => listFor(providerId))
-  h('models:test', async (_e, baseUrl: string, apiKey: string | undefined, providerId?: string) => {
+  h('models:test', async (_e, baseUrl: string, apiKey: string | undefined, providerId?: string, kind?: ProviderKind) => {
     // Blank key field while editing an existing provider = use its saved key.
     let key = apiKey
     if (!key && providerId) {
       const p = await store.getProviderRecord(providerId)
       key = p ? store.decryptKey(p) : undefined
     }
-    return testConnection(baseUrl, key)
+    return testConnection(baseUrl, key, kind === 'anthropic' ? 'anthropic' : 'openai')
   })
 }
 

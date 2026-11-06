@@ -1,6 +1,8 @@
 // Minimal OpenAI-compatible client (chat/completions streaming + /models).
 // No Electron imports so it can be unit-tested in plain Node.
 
+import type { RefusalInfo, UsageInfo } from '../shared/anthropic'
+
 export interface WireToolCall {
   id: string
   type: 'function'
@@ -25,8 +27,18 @@ export interface ParsedToolCall {
   arguments: string
 }
 
+export interface StreamMeta {
+  /** Provider-native content blocks of the finished response (for verbatim replay). */
+  raw?: unknown[]
+  usage?: UsageInfo
+  servedBy?: string
+  refusal?: RefusalInfo
+}
+
 export type StreamEvent =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'meta'; meta: StreamMeta }
   | { type: 'tool_calls'; calls: ParsedToolCall[] }
 
 export interface StreamOptions {

@@ -12,6 +12,16 @@ interface Props {
   onRegenerate(): void
 }
 
+const n = (v?: number) => (v ?? 0).toLocaleString()
+function Usage({ u }: { u: NonNullable<Message['usage']> }) {
+  const cached = u.cacheRead ? ` · ${n(u.cacheRead)} cached` : ''
+  return (
+    <span className="usage" title={`Input ${n(u.input)} · output ${n(u.output)}${u.cacheRead ? ` · cache read ${n(u.cacheRead)}` : ''}${u.cacheWrite ? ` · cache write ${n(u.cacheWrite)}` : ''}`}>
+      {n(u.input)} in · {n(u.output)} out{cached}
+    </span>
+  )
+}
+
 export function MessageItem({ message, streaming, isLast, continuation, onRegenerate }: Props) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
@@ -42,9 +52,15 @@ export function MessageItem({ message, streaming, isLast, continuation, onRegene
       </div>
       <div className="msg-body">
         {!continuation && <div className="msg-meta">{message.model || 'Assistant'}</div>}
+        {message.thinking && (
+          <details className="reasoning" open={streaming && !message.content}>
+            <summary>{streaming && !message.content ? 'Thinking…' : 'Reasoning'}</summary>
+            <div className="reasoning-body">{message.thinking}</div>
+          </details>
+        )}
         {message.content ? (
           <Markdown text={message.content} />
-        ) : streaming && !calls.length ? (
+        ) : streaming && !calls.length && !message.thinking ? (
           <div className="thinking">
             <span /> <span /> <span />
           </div>
@@ -69,6 +85,7 @@ export function MessageItem({ message, streaming, isLast, continuation, onRegene
                 {copied ? 'Copied' : 'Copy'}
               </button>
             )}
+            {message.usage && <Usage u={message.usage} />}
             {isLast && (
               <button className="link-btn" onClick={onRegenerate}>
                 {message.error ? 'Retry' : 'Regenerate'}

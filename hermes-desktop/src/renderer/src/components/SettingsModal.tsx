@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
+import { ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_MODEL, DEFAULT_ANTHROPIC_OPTIONS, EFFORT_LABELS, fallbackEligible, type AnthropicOptions, type ProviderKind } from '../../../shared/anthropic'
 import type { AppInfo, ConnectionResult, Provider } from '../../../shared/types'
 import { McpSettings } from './McpSettings'
 import { AppearanceSettings } from './AppearanceSettings'
@@ -186,17 +187,29 @@ function Providers({ providers, activeId, onChange }: { providers: Provider[]; a
     setSelected(s.providers.at(-1)!.id)
   }
 
+  const addClaude = async () => {
+    const s = await window.api.settings.saveProvider({
+      name: 'Claude (Anthropic)', kind: 'anthropic', baseUrl: ANTHROPIC_BASE_URL, defaultModel: ANTHROPIC_DEFAULT_MODEL, options: DEFAULT_ANTHROPIC_OPTIONS
+    })
+    onChange(s)
+    setSelected(s.providers.at(-1)!.id)
+  }
+
   return (
     <div className="providers">
       <div className="provider-list">
         {providers.map((p) => (
           <button key={p.id} className={p.id === selected ? 'on' : ''} onClick={() => setSelected(p.id)}>
-            {p.name}
+            <span className="prov-name">{p.name}</span>
+            {p.kind === 'anthropic' && <small className="kind">claude</small>}
             {p.id === activeId && <small>active</small>}
           </button>
         ))}
+        <button className="add" onClick={addClaude}>
+          ＋ Add Claude
+        </button>
         <button className="add" onClick={add}>
-          ＋ Add provider
+          ＋ Add other provider
         </button>
       </div>
       {current && <ProviderForm key={current.id} provider={current} canDelete={providers.length > 1} onChange={onChange} />}
@@ -206,6 +219,9 @@ function Providers({ providers, activeId, onChange }: { providers: Provider[]; a
 
 function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; canDelete: boolean; onChange: (s: any) => void }) {
   const [name, setName] = useState(provider.name)
+  const [kind, setKind] = useState<ProviderKind>(provider.kind)
+  const [options, setOptions] = useState<AnthropicOptions>(provider.options ?? DEFAULT_ANTHROPIC_OPTIONS)
+  const claude = kind === 'anthropic'
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl)
   const [apiKey, setApiKey] = useState('')
   const [clearKey, setClearKey] = useState(false)
@@ -216,13 +232,15 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
 
   const test = async () => {
     setTesting(true)
-    setResult(await window.api.models.test(baseUrl, apiKey || undefined, provider.id))
+    setResult(await window.api.models.test(baseUrl, apiKey || undefined, provider.id, kind))
     setTesting(false)
   }
   const save = async () => {
     const s = await window.api.settings.saveProvider({
       id: provider.id,
       name,
+      kind,
+      ...(claude ? { options } : {}),
       baseUrl,
       defaultModel,
       apiKey: clearKey ? '' : apiKey || undefined
@@ -241,9 +259,34 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
         <input value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       <label>
-        Base URL
-        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://localhost:20128/v1" spellCheck={false} />
-        <span className="hint">Any OpenAI-compatible endpoint (9router, Ollama, OpenRouter, vLLM…). We call <code>/chat/completions</code> and <code>/models</code>.</span>
+        Type
+        <select
+          value={kind}
+          onChange={(e) => {
+            const k = e.target.value as ProviderKind
+            setKind(k)
+            setResult(null)
+            // Switching type: swap in sensible defaults only where the field still holds the other type's default.
+            if (k === 'anthropic') {
+              if (!baseUrl || /localhost|127\.0\.0\.1/.test(baseUrl)) setBaseUrl(ANTHROPIC_BASE_URL)
+              if (!defaultModel) setDefaultModel(ANTHROPIC_DEFAULT_MODEL)
+            } else if (baseUrl === ANTHROPIC_BASE_URL) setBaseUrl('http://localhost:20128/v1')
+          }}
+        >
+          <option value="openai">OpenAI-compatible (9router, Ollama, OpenRouter, vLLM…)</option>
+          <option value="anthropic">Claude — native Anthropic API</option>
+        </select>
+      </label>
+      <label>
+        {claude ? 'API URL' : 'Base URL'}
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={claude ? ANTHROPIC_BASE_URL : 'http://localhost:20128/v1'} spellCheck={false} />
+        <span className="hint">
+          {claude ? (
+            <>Leave as <code>{ANTHROPIC_BASE_URL}</code> unless you use a gateway. Uses the Messages API with streaming, tools and prompt caching.</>
+          ) : (
+            <>Any OpenAI-compatible endpoint. We call <code>/chat/completions</code> and <code>/models</code>.</>
+          )}
+        </span>
       </label>
       <label>
         API key
@@ -251,7 +294,7 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
           type="password"
           value={apiKey}
           onChange={(e) => { setApiKey(e.target.value); setClearKey(false) }}
-          placeholder={provider.hasKey && !clearKey ? '•••••••• saved (leave blank to keep)' : 'Optional for local servers'}
+          placeholder={provider.hasKey && !clearKey ? '•••••••• saved (leave blank to keep)' : claude ? 'sk-ant-…  (or set ANTHROPIC_API_KEY)' : 'Optional for local servers'}
           autoComplete="off"
         />
         {provider.hasKey && (
@@ -269,9 +312,32 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
       </label>
       <label>
         Default model
-        <input list={`models-${provider.id}`} value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="e.g. cc/claude-opus-4-7" spellCheck={false} />
+        <input list={`models-${provider.id}`} value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder={claude ? ANTHROPIC_DEFAULT_MODEL : 'e.g. cc/claude-opus-4-7'} spellCheck={false} />
         <datalist id={`models-${provider.id}`}>{result?.models.map((m) => <option key={m} value={m} />)}</datalist>
       </label>
+
+      {claude && (
+        <div className="form-block claude-opts">
+          <b>Claude options</b>
+          <label>
+            Effort
+            <select value={options.effort} onChange={(e) => setOptions({ ...options, effort: e.target.value as AnthropicOptions['effort'] })}>
+              <option value="">Model default</option>
+              {Object.entries(EFFORT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <span className="hint">How hard Claude thinks. Higher = slower and costlier. Not every model supports every level; unsupported values are skipped when the model says so.</span>
+          </label>
+          <label className="check"><input type="checkbox" checked={options.showThinking} onChange={(e) => setOptions({ ...options, showThinking: e.target.checked })} /> Show reasoning summaries</label>
+          <label className="check"><input type="checkbox" checked={options.promptCaching} onChange={(e) => setOptions({ ...options, promptCaching: e.target.checked })} /> Prompt caching (re-reads repeated context at ~10% of the price)</label>
+          <label className="check">
+            <input type="checkbox" checked={options.refusalFallback} onChange={(e) => setOptions({ ...options, refusalFallback: e.target.checked })} /> Automatic refusal fallback
+          </label>
+          <span className="hint">
+            When Claude declines a request, retry on a fallback model server-side. Only available on {fallbackEligible(defaultModel || ANTHROPIC_DEFAULT_MODEL, baseUrl || ANTHROPIC_BASE_URL) ? 'this model' : 'Claude Fable/Opus 5.x and Sonnet 5.5 via the official API — not used for the current model/URL'}.
+          </span>
+          <span className="hint">The temperature setting isn’t sent to Claude — newer models reject it.</span>
+        </div>
+      )}
 
       {result && (
         <div className={`status ${result.ok ? 'ok' : 'bad'}`} role="status">

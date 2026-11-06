@@ -238,6 +238,8 @@ export const useStore = create<State>((set, get) => ({
           return { ...m, toolCalls: exists ? calls.map((c) => (c.id === e.call.id ? e.call : c)) : [...calls, e.call] }
         }
         if (e.type === 'delta') return { ...m, content: m.content + e.text }
+        if (e.type === 'thinking') return { ...m, thinking: (m.thinking ?? '') + e.text }
+        if (e.type === 'meta') return { ...m, usage: e.usage, servedBy: e.servedBy }
         if (e.type === 'error') return { ...m, error: e.error }
         return m
       })

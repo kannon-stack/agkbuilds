@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import { MAX_TOOL_STEPS, metaFor } from '../shared/toolMeta'
 import type { ChatEvent, Conversation, Message, ToolCall, ToolDecision } from '../shared/types'
-import { streamChat, type ParsedToolCall, type WireMessage } from './openai'
+import { streamChat, type ParsedToolCall, type StreamEvent, type WireMessage } from './openai'
+import { streamAnthropic, toAnthropicMessages, toAnthropicTools } from './anthropic'
+import { DEFAULT_ANTHROPIC_OPTIONS, refusalMessage } from '../shared/anthropic'
 import { activeTools, authorize, getTool, systemNote, toToolDefs, ToolError } from './tools'
 import { skillPayload } from './tools/skillTools'
 import { activeSkills } from './skills/registry'
@@ -141,16 +143,30 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
       const wire: WireMessage[] = [...(system ? [{ role: 'system' as const, content: system }] : []), ...toWire(history)]
 
       let calls: ParsedToolCall[] = []
+      let refusal: string | undefined
       let lastSave = Date.now()
-      for await (const ev of streamChat({
-        baseUrl: provider.baseUrl,
-        apiKey: decryptKey(provider),
-        model: useModel,
-        messages: wire,
-        temperature: settings.temperature,
-        tools: toolDefs,
-        signal: ctl.signal
-      })) {
+      const events: AsyncGenerator<StreamEvent> =
+        provider.kind === 'anthropic'
+          ? streamAnthropic({
+              baseUrl: provider.baseUrl,
+              apiKey: decryptKey(provider),
+              model: useModel,
+              system,
+              messages: toAnthropicMessages(history),
+              tools: toAnthropicTools(toolDefs),
+              options: provider.options ?? DEFAULT_ANTHROPIC_OPTIONS,
+              signal: ctl.signal
+            })
+          : streamChat({
+              baseUrl: provider.baseUrl,
+              apiKey: decryptKey(provider),
+              model: useModel,
+              messages: wire,
+              temperature: settings.temperature,
+              tools: toolDefs,
+              signal: ctl.signal
+            })
+      for await (const ev of events) {
         if (ev.type === 'text') {
           assistant.content += ev.text
           emit(wc, { type: 'delta', conversationId: conv.id, messageId: assistant.id, text: ev.text })
@@ -158,8 +174,19 @@ async function generate(wc: WebContents, conv: Conversation, providerId?: string
             lastSave = Date.now()
             void saveConversation(conv)
           }
+        } else if (ev.type === 'thinking') {
+          assistant.thinking = (assistant.thinking ?? '') + ev.text
+          emit(wc, { type: 'thinking', conversationId: conv.id, messageId: assistant.id, text: ev.text })
+        } else if (ev.type === 'meta') {
+          // Stored verbatim so the next request can replay this turn exactly (Claude thinking signatures).
+          if (ev.meta.raw) assistant.raw = ev.meta.raw
+          assistant.usage = ev.meta.usage
+          assistant.servedBy = ev.meta.servedBy
+          if (ev.meta.refusal) refusal = refusalMessage(ev.meta.refusal)
+          emit(wc, { type: 'meta', conversationId: conv.id, messageId: assistant.id, usage: ev.meta.usage, servedBy: ev.meta.servedBy })
         } else calls = ev.calls
       }
+      if (refusal) return await end('error', refusal)
       if (!calls.length) return await end('done')
 
       // ---- run the requested tools ----

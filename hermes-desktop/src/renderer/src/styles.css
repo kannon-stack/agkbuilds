@@ -389,3 +389,14 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .slash-item .risk { margin-left: 0; flex: none; }
 
 .about { display: flex; flex-direction: column; gap: 2px; }
+
+/* ---------- Claude provider ---------- */
+.provider-list .prov-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-list small.kind { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent), transparent 60%); border-radius: 999px; padding: 0 6px; margin-left: 6px; }
+.claude-opts { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+
+.reasoning { margin: 2px 0 8px; border-left: 2px solid var(--border); padding-left: 10px; color: var(--muted); }
+.reasoning > summary { cursor: pointer; font-size: calc(12.5px * var(--font-scale, 1)); user-select: none; }
+.reasoning-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(13px * var(--font-scale, 1)); margin-top: 4px; max-height: 260px; overflow-y: auto; }
+.served-by { color: var(--accent); }
+.usage { color: var(--muted); font: calc(11.5px * var(--font-scale, 1)) var(--font-mono); }
