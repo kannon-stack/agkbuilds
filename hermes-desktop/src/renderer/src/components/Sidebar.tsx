@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
+import { MOD } from '../platform'
 import { APP_NAME, type ConversationSummary } from '../../../shared/types'
 
 function bucket(ts: number): string {
@@ -44,7 +45,7 @@ export function Sidebar() {
       </div>
       <button className="btn new" onClick={newChat}>
         <span>＋ New chat</span>
-        <kbd>Ctrl N</kbd>
+        <kbd>{MOD} N</kbd>
       </button>
       <input className="search" placeholder="Search chats" value={q} onChange={(e) => setQ(e.target.value)} />
       <nav className="convlist">
@@ -98,7 +99,7 @@ export function Sidebar() {
         {!groups.length && <p className="muted pad">{q ? 'No matches.' : 'No chats yet.'}</p>}
       </nav>
       <button className="btn ghost settings-btn" onClick={() => openSettings(true)}>
-        ⚙ Settings <kbd>Ctrl ,</kbd>
+        ⚙ Settings <kbd>{MOD} ,</kbd>
       </button>
     </aside>
   )

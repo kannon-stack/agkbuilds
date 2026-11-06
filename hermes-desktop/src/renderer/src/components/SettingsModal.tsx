@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
-import type { ConnectionResult, Provider } from '../../../shared/types'
+import type { AppInfo, ConnectionResult, Provider } from '../../../shared/types'
 import { McpSettings } from './McpSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { MemorySettings } from './MemorySettings'
@@ -127,6 +127,31 @@ function Tools() {
   )
 }
 
+function About() {
+  const [info, setInfo] = useState<AppInfo | null>(null)
+  const { showToast } = useStore()
+  useEffect(() => {
+    void window.api.app.info().then(setInfo)
+  }, [])
+  if (!info) return null
+  const diag = `${info.name} ${info.version}${info.packaged ? '' : ' (dev)'}\nElectron ${info.electron} · Chromium ${info.chrome} · Node ${info.node}\n${info.platform} ${info.arch}\nData: ${info.dataDir}`
+  return (
+    <div className="form-block">
+      <b>About</b>
+      <div className="about">
+        <div><b>{info.name}</b> {info.version}{!info.packaged && <span className="risk">dev build</span>}</div>
+        <div className="muted small">Electron {info.electron} · Chromium {info.chrome} · {info.platform} {info.arch}</div>
+        <code className="mono-small">{info.dataDir}</code>
+      </div>
+      <div className="form-actions">
+        <button className="btn" onClick={() => window.api.app.openDataFolder()}>Open data folder</button>
+        <button className="btn" onClick={async () => { await navigator.clipboard.writeText(diag); showToast('Diagnostics copied') }}>Copy diagnostics</button>
+      </div>
+      <span className="hint">Your chats, memory, skills and settings live in the data folder. Uninstalling the app never deletes it.</span>
+    </div>
+  )
+}
+
 function General() {
   const { settings, setSettings } = useStore()
   const [prompt, setPrompt] = useState(settings!.systemPrompt)
@@ -146,6 +171,7 @@ function General() {
         <input type="range" min={0} max={2} step={0.1} value={temp} onChange={(e) => setTemp(+e.target.value)} onMouseUp={() => update({ temperature: temp })} onKeyUp={() => update({ temperature: temp })} />
         <span className="hint">Lower is more focused, higher is more creative.</span>
       </label>
+      <About />
     </div>
   )
 }

@@ -387,3 +387,5 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .slash-item code { font: calc(13px * var(--font-scale, 1)) var(--font-mono); color: var(--accent); flex: none; }
 .slash-desc { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .slash-item .risk { margin-left: 0; flex: none; }
+
+.about { display: flex; flex-direction: column; gap: 2px; }

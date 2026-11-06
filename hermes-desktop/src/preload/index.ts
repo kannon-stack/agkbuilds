@@ -53,6 +53,8 @@ const api: Api = {
     return () => ipcRenderer.removeListener('data:changed', listener)
   },
   app: {
+    info: () => invoke('app:info'),
+    openDataFolder: () => invoke('app:openDataFolder'),
     rendered: async () => ipcRenderer.send('app:rendered')
   },
   mcp: {

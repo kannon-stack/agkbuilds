@@ -1,7 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
-import { APP_NAME } from '../shared/types'
+import { APP_ID, APP_NAME } from '../shared/types'
+import type { AppInfo } from '../shared/types'
+import { existsSync } from 'node:fs'
 import type { ConnectionResult } from '../shared/types'
 import * as store from './store'
 import * as chat from './chat'
@@ -15,6 +17,12 @@ import { SkillError, summarize, withEnabled } from './skills/registry'
 import type { Result } from '../shared/types'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
+
+/** Window/taskbar icon: shipped as an extra resource when packaged, from build/ in dev. */
+function iconPath(): string | undefined {
+  const p = app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(app.getAppPath(), 'build', 'icon.png')
+  return existsSync(p) ? p : undefined
+}
 
 /** Window background matching the active theme (so resize/overscroll never flashes the wrong colour). */
 async function themeBackground(): Promise<string> {
@@ -30,6 +38,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minHeight: 480,
     title: APP_NAME,
     backgroundColor: await themeBackground(),
+    icon: iconPath(),
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -143,6 +152,13 @@ function registerIpc() {
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
   h('settings:removeProvider', (_e, id: string) => store.removeProvider(id))
+  // ---- about / diagnostics
+  h('app:info', (): AppInfo => ({
+    name: app.getName(), version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
+    node: process.versions.node, platform: process.platform, arch: process.arch, packaged: app.isPackaged, dataDir: app.getPath('userData')
+  }))
+  h('app:openDataFolder', async () => void (await shell.openPath(app.getPath('userData'))))
+
   // ---- memory
   h('memory:list', () => services.memory.list())
   h('memory:add', async (_e, text: string, scope: 'global' | 'project') => {
@@ -240,6 +256,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     app.setName(APP_NAME)
+    if (process.platform === 'win32') app.setAppUserModelId(APP_ID) // taskbar grouping, pinning, notifications
+    if (process.platform === 'darwin' && !app.isPackaged) { const i = iconPath(); if (i) app.dock?.setIcon(i) }
     await store.initStore()
     initServices(app.getPath('userData'))
     await store.pruneEmptyConversations()

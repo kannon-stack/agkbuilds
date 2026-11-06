@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 **streaming chat + history**, **provider/model switching + settings**, and **tool use**
-(files, shell, web) with approvals, **MCP servers** as an extension point for more tools, **theming**, and **memory + skills**.
+(files, shell, web) with approvals, **MCP servers** as an extension point for more tools, **theming**, **memory + skills**, and cross-platform **packaging**.
 
 > Rename the app in one place: `APP_NAME` in `src/shared/types.ts` (+ `productName` in `package.json`).
 
@@ -152,6 +152,31 @@ Code: `src/shared/{memory,skills}.ts` (pure helpers/prompt formatting), `src/mai
 `src/main/skills/{parse,registry}.ts`, `src/main/tools/{memoryTools,skillTools}.ts`, UI in
 `MemorySettings.tsx` / `SkillsSettings.tsx` / `Composer.tsx`. Tools appear in Settings → Tools so each can be set to
 ask / always allow / disabled.
+
+## Packaging
+
+`electron-builder` (config: `electron-builder.config.cjs`, always passed with `--config` — the builder ignores that filename on its own).
+Linux: AppImage + deb + tar.gz · Windows: NSIS installer + zip · macOS: dmg + zip (x64 + arm64). Details in [README.md](README.md).
+
+- **What ships:** only `out/` (the Vite/electron-vite output) in an `app.asar` (~14 MB) + the Electron runtime. Renderer libraries
+  (React, markdown, highlight.js…) are bundled by Vite and therefore live in `devDependencies`; the only runtime `dependencies` are the
+  ones the main process loads from `node_modules` at run time (`@modelcontextprotocol/sdk`, `yaml`, `zod`). A test enforces this split and
+  `scripts/verify-bundle.mjs` (run before every `dist`) fails the build if the compiled main/preload requires something that isn't shipped.
+- **Hardening (Electron fuses):** `RunAsNode`, `NODE_OPTIONS` and `--inspect` are disabled in the shipped binary, cookies are encrypted,
+  and only the asar is loaded — the app can't be repurposed as a generic Node runtime. (`TALARIA_UNFUSED=1` builds a test variant that
+  Playwright can attach to.)
+- **Identity:** `APP_ID`/`APP_NAME` in `src/shared/types.ts` ↔ `appId`/`productName` in the builder config (a test keeps them in sync);
+  Windows AppUserModelID is set for taskbar grouping; `desktopName` links Linux windows to their launcher; icons are rendered from
+  `build/icon.svg` (pure-JS resvg) and the builder derives `.ico`/`.icns`.
+- **Data safety:** uninstall never deletes the data folder (`deleteAppDataOnUninstall: false`). About/diagnostics in Settings → General.
+- **CI:** `.github/workflows/desktop.yml` — typecheck/test/build on every change; installers on Windows/macOS/Linux runners for tags
+  `desktop-v*` (or manual runs) → draft release. Signing/notarization activate when the secrets exist (listed in the README).
+- **Verified here (Linux):** production AppImage/deb/tar.gz build; fuse state inspected in the binary; hardened AppImage and unpacked build
+  launch and render; all end-to-end suites pass against the packaged (unfused) build.
+- **Not verified here:** Windows NSIS installer (needs wine off-Windows; the zip and exe layout were built), macOS dmg/signing/notarization
+  (only an unsigned `.app` directory was built), and the CI workflow itself (can't run Actions from this environment).
+- **Not done:** auto-update (needs signed builds on macOS and a publish channel — `publish` is `null` on purpose), Windows ARM / Linux ARM
+  targets, a Linux `.rpm`, Flatpak/Snap/winget/Homebrew distribution.
 
 ## Theming
 

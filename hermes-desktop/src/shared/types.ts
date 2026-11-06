@@ -7,6 +7,8 @@ import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skil
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
+/** Reverse-DNS app id (Windows taskbar grouping, macOS bundle id). Keep in sync with electron-builder.config.js. */
+export const APP_ID = 'dev.talaria.desktop'
 
 export type Role = 'system' | 'user' | 'assistant'
 
@@ -45,6 +47,18 @@ export interface Message {
   toolCalls?: ToolCall[]
   /** User message that invoked a skill with /name — instructions are snapshotted so history stays reproducible. */
   skill?: { name: string; text: string }
+}
+
+export interface AppInfo {
+  name: string
+  version: string
+  electron: string
+  chrome: string
+  node: string
+  platform: string
+  arch: string
+  packaged: boolean
+  dataDir: string
 }
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: string }
@@ -200,6 +214,8 @@ export interface Api {
   /** Fired when memory or skills change behind the UI's back (e.g. the model saved a note). */
   onDataChanged(cb: (kind: 'memory' | 'skills') => void): () => void
   app: {
+    info(): Promise<AppInfo>
+    openDataFolder(): Promise<void>
     /** Renderer has applied the theme — the (hidden) window may now be shown. */
     rendered(): Promise<void>
   }
