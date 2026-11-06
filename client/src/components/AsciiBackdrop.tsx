@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { BANNER_COLUMNS, BANNER_LINES } from "@/lib/asciiBanner";
+import { DiamondField } from "@/components/Ornaments";
 
 /**
  * Fixed full-viewport background: the AGK BUILDS ASCII banner, gradient-filled,
@@ -8,6 +9,7 @@ import { BANNER_COLUMNS, BANNER_LINES } from "@/lib/asciiBanner";
 export function AsciiBackdrop() {
   return (
     <div className="ascii-backdrop" aria-hidden="true">
+      <DiamondField />
       <pre className="ascii-banner" style={{ ["--banner-cols" as string]: BANNER_COLUMNS }}>
         {BANNER_LINES.join("\n")}
       </pre>
