@@ -220,6 +220,8 @@ export interface Api {
     rename(id: string, title: string): Promise<void>
     remove(id: string): Promise<void>
     setModel(id: string, providerId: string, model: string): Promise<void>
+    /** Save as a file (native dialog) or copy the visible branch as Markdown. Cancelling the dialog is not an error. */
+    export(id: string, how: 'markdown' | 'json' | 'copy'): Promise<Result<{ path?: string; cancelled?: boolean }>>
   }
   chat: {
     send(req: SendRequest): Promise<Conversation>

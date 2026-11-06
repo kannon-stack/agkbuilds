@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { APP_ID, APP_NAME } from '../shared/types'
@@ -19,6 +19,7 @@ import { initServices, services } from './services'
 import { MemoryError } from './memory'
 import { SkillError, summarize, withEnabled } from './skills/registry'
 import type { Result } from '../shared/types'
+import { exportFileName, toJson, toMarkdown } from '../shared/export'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
@@ -106,6 +107,15 @@ async function guarded<T>(fn: () => Promise<T>): Promise<Result<T>> {
   }
 }
 
+/** Like `guarded`, but every Error becomes a message for the UI (file-system and user-facing failures). */
+async function expected<T>(fn: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return { ok: true, value: await fn() }
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
+}
+
 function broadcast(kind: 'memory' | 'skills') {
   BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('data:changed', kind))
 }
@@ -140,6 +150,28 @@ function registerIpc() {
       await store.saveConversation(c)
     }
   })
+
+  h('conversations:export', (e, id: string, how: 'markdown' | 'json' | 'copy') =>
+    expected(async () => {
+      const c = await store.getConversation(id)
+      if (!c || !c.messages.length) throw new Error('Nothing to export yet.')
+      if (how === 'copy') {
+        clipboard.writeText(toMarkdown(c))
+        return {}
+      }
+      if (how !== 'markdown' && how !== 'json') throw new Error('Unknown export format.')
+      const win = BrowserWindow.fromWebContents(e.sender)
+      const opts = {
+        title: 'Export conversation',
+        defaultPath: path.join(app.getPath('documents'), exportFileName(c, how)),
+        filters: how === 'markdown' ? [{ name: 'Markdown', extensions: ['md'] }] : [{ name: 'JSON', extensions: ['json'] }]
+      }
+      const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts)
+      if (r.canceled || !r.filePath) return { cancelled: true }
+      await fsp.writeFile(r.filePath, how === 'markdown' ? toMarkdown(c) : toJson(c), 'utf8')
+      return { path: r.filePath }
+    })
+  )
 
   h('chat:send', (e, req) => chat.sendMessage(e.sender, req))
   h('chat:regenerate', (e, req) => chat.regenerate(e.sender, req))

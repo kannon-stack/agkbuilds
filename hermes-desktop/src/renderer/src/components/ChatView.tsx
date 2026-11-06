@@ -4,6 +4,7 @@ import { APP_NAME } from '../../../shared/types'
 import { pathOf, siblingInfo } from '../../../shared/tree'
 import { Composer } from './Composer'
 import { MessageItem } from './MessageItem'
+import { ExportMenu } from './ExportMenu'
 
 export function ChatView() {
   const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings } = useStore()
@@ -30,6 +31,7 @@ export function ChatView() {
     <main className="chat">
       <header className="chat-head">
         <h1>{empty ? 'New chat' : active!.title}</h1>
+        {!empty && <ExportMenu conversationId={active!.id} />}
       </header>
       <div
         className="scroller"

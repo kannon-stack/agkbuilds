@@ -11,7 +11,8 @@ const api: Api = {
     create: () => invoke('conversations:create'),
     rename: (id, title) => invoke('conversations:rename', id, title),
     remove: (id) => invoke('conversations:remove', id),
-    setModel: (id, providerId, model) => invoke('conversations:setModel', id, providerId, model)
+    setModel: (id, providerId, model) => invoke('conversations:setModel', id, providerId, model),
+    export: (id, how) => invoke('conversations:export', id, how)
   },
   chat: {
     send: (req) => invoke('chat:send', req),
