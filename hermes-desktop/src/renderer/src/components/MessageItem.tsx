@@ -3,6 +3,7 @@ import type { Message } from '../../../shared/types'
 import type { SiblingInfo } from '../../../shared/tree'
 import { Markdown } from './Markdown'
 import { ToolCallCard } from './ToolCallCard'
+import { Thumbs } from './Thumbs'
 
 interface Props {
   message: Message
@@ -37,7 +38,7 @@ function BranchNav({ info, id, disabled, onSwitch }: { info: SiblingInfo; id: st
   )
 }
 
-function Editor({ initial, onSave, onCancel }: { initial: string; onSave(text: string): void; onCancel(): void }) {
+function Editor({ initial, allowEmpty, onSave, onCancel }: { initial: string; allowEmpty: boolean; onSave(text: string): void; onCancel(): void }) {
   const [text, setText] = useState(initial)
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -52,7 +53,8 @@ function Editor({ initial, onSave, onCancel }: { initial: string; onSave(text: s
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 260)}px`
   }, [text])
-  const save = () => text.trim() && onSave(text)
+  const canSave = allowEmpty || !!text.trim()
+  const save = () => canSave && onSave(text)
   return (
     <div className="editor">
       <textarea
@@ -72,11 +74,11 @@ function Editor({ initial, onSave, onCancel }: { initial: string; onSave(text: s
         <button className="btn" onClick={onCancel}>
           Cancel
         </button>
-        <button className="btn primary" disabled={!text.trim()} onClick={save}>
+        <button className="btn primary" disabled={!canSave} onClick={save}>
           Save &amp; send
         </button>
       </div>
-      <p className="muted editor-hint">Your original message and its replies are kept — switch back with ‹ ›.</p>
+      <p className="muted editor-hint">Your original message and its replies are kept — switch back with ‹ ›. Attached images stay with the message.</p>
     </div>
   )
 }
@@ -106,9 +108,11 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, si
       <div className="msg msg-user">
         <div className={`bubble-col ${editing ? 'editing' : ''}`} data-message-id={message.id}>
           {message.skill && <span className="skill-chip" title="This message invoked a skill">⚡ {message.skill.name}</span>}
+          {message.attachments && <Thumbs items={message.attachments} />}
           {editing ? (
             <Editor
               initial={message.content}
+              allowEmpty={!!message.attachments?.length}
               onCancel={() => setEditing(false)}
               onSave={(t) => {
                 setEditing(false)
@@ -116,10 +120,10 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, si
               }}
             />
           ) : (
-            <div className="bubble">{message.content}</div>
+            message.content && <div className="bubble">{message.content}</div>
           )}
           {!editing && (
-            <div className="msg-actions user-actions">
+            <div className={`msg-actions user-actions ${siblings.count > 1 ? 'pinned' : ''}`}>
               <BranchNav info={siblings} id={message.id} disabled={busy} onSwitch={onSwitch} />
               <button className="link-btn" disabled={busy} onClick={copy}>
                 {copied ? 'Copied' : 'Copy'}

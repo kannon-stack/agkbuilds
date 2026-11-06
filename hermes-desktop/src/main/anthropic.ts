@@ -5,6 +5,7 @@ import {
 } from '../shared/anthropic'
 import { parseSlash, skillInvocation } from '../shared/skills'
 import type { Message } from '../shared/types'
+import { missingImageNote, type ImageLookup } from '../shared/attachments'
 import type { ParsedToolCall, StreamEvent, ToolDef } from './openai'
 
 /** Native Anthropic Messages API client (official SDK). No Electron imports: testable against a local fake server. */
@@ -124,7 +125,7 @@ export function toAnthropicTools(defs: ToolDef[]): Anthropic.Tool[] {
  *  - tool results go in ONE user message right after the tool_use turn;
  *  - consecutive user messages are merged (tool_results first).
  */
-export function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
+export function toAnthropicMessages(messages: Message[], images: ImageLookup = new Map()): Anthropic.MessageParam[] {
   const out: Anthropic.MessageParam[] = []
   const asBlocks = (c: Anthropic.MessageParam['content']): Anthropic.ContentBlockParam[] => (typeof c === 'string' ? [{ type: 'text', text: c }] : c)
   const push = (role: 'user' | 'assistant', content: Anthropic.MessageParam['content']) => {
@@ -136,6 +137,19 @@ export function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam
   for (const m of messages) {
     if (m.role === 'user') {
       const text = m.skill ? skillInvocation(m.skill.name, m.skill.text, parseSlash(m.content)?.args ?? '') : m.content
+      if (m.attachments?.length) {
+        const blocks: Anthropic.ContentBlockParam[] = []
+        const notes: string[] = []
+        for (const a of m.attachments) {
+          const data = images.get(a.id)
+          if (data) blocks.push({ type: 'image', source: { type: 'base64', media_type: a.mime, data } })
+          else notes.push(missingImageNote(a.name))
+        }
+        const full = [text, ...notes].filter((s) => s.trim()).join('\n')
+        if (full) blocks.push({ type: 'text', text: full })
+        if (blocks.length) push('user', blocks)
+        continue
+      }
       if (text.trim()) push('user', text)
       continue
     }

@@ -2,7 +2,7 @@
 
 A customizable AI chat desktop app (working title). Streaming chat with history, any OpenAI-compatible
 provider (preset: [9router](https://github.com/decolua/9router)), file/shell/web tools **with approvals**, MCP servers,
-memory, skills and themes. See [DESIGN.md](DESIGN.md) for architecture and decisions.
+memory, skills and themes — plus message editing with branches, full-text search, export, and image attachments. See [DESIGN.md](DESIGN.md) for architecture and decisions.
 
 ## Install
 
@@ -19,7 +19,7 @@ First launch: **Settings → Providers**.
 - **Anything OpenAI-compatible** (9router, Ollama, OpenRouter…): set the base URL (default `http://localhost:20128/v1`), key, **Test connection**, pick a model.
 
 ### Where your data lives
-Chats, settings, memory and skills are plain files in the app's data folder (also reachable from **Settings → General →
+Chats, settings, memory, skills and attached images are plain files in the app's data folder (also reachable from **Settings → General →
 Open data folder**). **Uninstalling never deletes them.**
 
 | OS | Folder |

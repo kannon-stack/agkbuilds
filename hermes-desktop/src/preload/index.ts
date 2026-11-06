@@ -5,6 +5,11 @@ import type { McpServerStatus } from '../shared/mcp'
 const invoke = <T>(channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args) as Promise<T>
 
 const api: Api = {
+  attachments: {
+    save: (name, bytes) => invoke('attachments:save', name, bytes),
+    pick: () => invoke('attachments:pick'),
+    dataUrl: (a) => invoke('attachments:dataUrl', a)
+  },
   conversations: {
     list: () => invoke('conversations:list'),
     get: (id) => invoke('conversations:get', id),

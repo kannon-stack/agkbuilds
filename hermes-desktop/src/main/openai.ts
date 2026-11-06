@@ -9,9 +9,11 @@ export interface WireToolCall {
   function: { name: string; arguments: string }
 }
 
+export type WireContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+
 export interface WireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | null
+  content: string | WireContentPart[] | null
   tool_calls?: WireToolCall[]
   tool_call_id?: string
 }

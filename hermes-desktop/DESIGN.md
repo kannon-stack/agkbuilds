@@ -48,8 +48,8 @@ where tools/agents will live later, with the same trust boundary.
    shown inline with **Retry**.
 
 ### Data model (`src/shared/types.ts`)
-`Conversation { id, title, messages[], providerId?, model?, systemPrompt? }` ·
-`Message { id, role, content, model?, error? }` · `Provider { id, name, baseUrl, defaultModel, hasKey }` ·
+`Conversation { id, title, messages[], leafId?, rootChild?, providerId?, model?, systemPrompt? }` ·
+`Message { id, parentId, activeChild?, role, content, attachments?, model?, error? }` (see *Chat polish*) · `Provider { id, name, baseUrl, defaultModel, hasKey }` ·
 `Settings { providers[], activeProviderId, systemPrompt, temperature, theme }`.
 
 ### Security posture
@@ -271,6 +271,48 @@ Adding a preset = one entry in `PRESETS`; adding a new themable token = one key 
   General (theme system/dark/light, global system prompt, temperature).
 - **Shortcuts:** `Ctrl/Cmd+N` new chat · `Ctrl/Cmd+,` settings · `Enter` send · `Shift+Enter` newline.
 
+## Chat polish
+
+### Branching (edit & regenerate)
+A conversation is a **tree**: `Conversation.messages` holds every node of every branch; each `Message` has `parentId`
+(`null` = first message) and `activeChild` (which child the view follows at a fork; `Conversation.rootChild` for the first
+message). The chat on screen is the path root → `leafId` (`shared/tree.ts`: `pathOf`, `siblingInfo`, `switchTo`, `setLeaf` — all
+pure and cycle-safe).
+- **Edit** a user message → a *sibling* user message under the same parent, answered immediately; the original and its replies stay as
+  another branch. **Regenerate** → a new sibling of the answer; a failed, empty answer is replaced rather than piled up.
+- A `‹ n/m ›` switcher on any message with siblings flips branches (each fork remembers the branch you last viewed).
+  Switching is disabled while a response streams. Tool rounds chain as assistant → assistant children, so they stay inside one branch.
+- Pure edit rules live in `main/conversationOps.ts` (unit-tested); `chat.ts` only orchestrates I/O and streaming. The provider history
+  for a turn is `pathTo(conv, assistant.parentId)`, so other branches never leak into requests.
+- **Migration:** files without `parentId` are linear — `normalizeTree` links each message to the previous one on load (also repairs
+  dangling parents/pointers from hand-edited files). Nothing is rewritten until the next save.
+
+### Search
+`shared/search.ts` is a pure scan over every message of every branch (plus titles, attachment names and tool-call summaries):
+all terms must appear somewhere in the chat (quoted phrases supported), ranked title-match first then recency, ≤30 chats,
+≤3 snippets each with `<mark>` highlights. `store.loadAllConversations` caches parsed chats by mtime+size so each keystroke
+(120 ms debounce) only re-reads files that changed. Clicking a hit opens the chat, switches to the right branch if the hit is on an
+inactive one (`conversations:reveal`, which doesn't count as activity), and flashes the message. No index/SQLite yet —
+a linear scan is instant for thousands of chats; revisit if that stops being true.
+
+### Export
+Header **⋯** menu: *Copy as Markdown*, *Save as Markdown…* (visible branch; title/model/date, tool calls summarized with results
+cut at 2 000 chars, reasoning omitted, `[image: name]` for attachments, fences that can't be broken out of) and *Save as JSON*
+(all branches, minus provider-internal `raw` blocks). Files are written by the main process after a native save dialog.
+
+### Image attachments
+Paste, drag-drop or 📎 (≤6 per message, ≤5 MB each; PNG/JPEG/GIF/WebP). The renderer downscales big images (long edge > 2048 px or > 1.5 MB;
+never GIFs). The main process (`main/attachments.ts`) **detects the type from magic bytes** (name/MIME are never trusted; SVG is
+refused), stores `<sha256>.<ext>` in `userData/attachments/` (content-addressed → duplicates are free) and later re-verifies every
+descriptor the renderer sends against the file on disk. Messages store only `{id,name,mime,size}`; the renderer receives pixels as
+data URLs over IPC, never paths (so the strict `img-src 'self' data:` CSP is unchanged). On the wire: OpenAI-style `image_url` data-URL
+parts / Claude base64 `image` blocks, before the text; a file that has gone missing becomes `[image unavailable: name]`. Unreferenced
+files older than an hour are deleted at startup and after a chat is deleted — and never if any chat file couldn't be read.
+Images are re-sent with every turn (no context management yet), so long image-heavy chats cost tokens; the model must support vision.
+
+### Scroll-to-latest
+A floating ↓ button appears whenever you've scrolled away from the bottom (e.g. while a long answer streams) and jumps back.
+
 ## Customization roadmap (designed-for, not built)
 
 The seams already exist so these are additive:
@@ -279,7 +321,7 @@ The seams already exist so these are additive:
 2. **Providers** — add native adapters (Anthropic Messages, etc.) behind the same
    `streamChat` shape; provider `kind` field in `ProviderRecord`.
 3. **Per-chat settings** — `Conversation.systemPrompt` is already honored by `chat.ts`; needs UI. Add presets ("personas").
-4. **Storage → SQLite** — swap `store.ts`; unlocks full-text search over message bodies.
+4. **Storage → SQLite** — swap `store.ts`; would add ranked/indexed search (substring scan works today).
 5. **More tools** — add a `ToolImpl` to `src/main/tools/` + a row in `shared/toolMeta.ts`, or just connect an MCP server (done).
    Also: MCP OAuth, resources/prompts, per-conversation workspace, command allow/deny patterns, background processes.
 6. **Memory & skills** — done (see above). Possible next: semantic recall for large memories, automatic end-of-chat memory suggestions (with approval), skill sharing/export, per-conversation skill sets.
@@ -287,7 +329,7 @@ The seams already exist so these are additive:
 
 ## Known limitations (v1)
 
-- Text only: no attachments/images, no message editing/branching, no export.
+- Attachments are images only (no PDFs/text files/audio); edited messages keep their original images (can't swap them); search is a substring scan (no stemming/fuzzy); exports don't embed image bytes; branches can't be deleted or merged individually (delete the chat); no message-level pin/bookmark.
 - MCP: tools only (no resources, prompts, sampling or elicitation); OAuth covers the interactive browser flow only; server `instructions` aren't forwarded to the model; images
   aren't rendered; local servers keep the working directory they started with (restart after changing
   workspace). When the app is launched from the macOS Dock/Windows Start menu, `PATH` may lack tools like

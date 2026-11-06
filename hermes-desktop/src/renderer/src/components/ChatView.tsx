@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { effectiveModel, useStore } from '../store'
 import { APP_NAME } from '../../../shared/types'
 import { pathOf, siblingInfo } from '../../../shared/tree'
@@ -10,6 +10,7 @@ export function ChatView() {
   const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings } = useStore()
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  const [away, setAway] = useState(false) // scrolled up from the latest message
   // The messages on screen = the branch ending at the conversation's leaf.
   const path = useMemo(() => (active ? pathOf(active) : []), [active])
   const busy = !!active && !!generating[active.id]
@@ -22,6 +23,7 @@ export function ChatView() {
   }, [path, busy])
   useEffect(() => {
     stick.current = true
+    setAway(false)
   }, [active?.id])
 
   // Arriving from a search result: scroll the message into view and flash it.
@@ -54,7 +56,9 @@ export function ChatView() {
         ref={scroller}
         onScroll={(e) => {
           const el = e.currentTarget
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          stick.current = near
+          setAway((was) => (was === !near ? was : !near))
         }}
       >
         {empty ? (
@@ -90,6 +94,21 @@ export function ChatView() {
             ))}
           </div>
         )}
+      </div>
+      <div className="to-latest-wrap">
+      {away && !empty && (
+        <button
+          className="to-latest"
+          aria-label="Scroll to latest message"
+          title="Scroll to latest"
+          onClick={() => {
+            stick.current = true
+            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
+          }}
+        >
+          ↓{busy ? ' New response' : ''}
+        </button>
+      )}
       </div>
       <Composer generating={busy} disabled={!active} onSend={send} onStop={stop} />
     </main>

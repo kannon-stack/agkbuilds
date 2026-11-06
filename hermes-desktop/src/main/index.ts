@@ -19,6 +19,7 @@ import { initServices, services } from './services'
 import { MemoryError } from './memory'
 import { SkillError, summarize, withEnabled } from './skills/registry'
 import type { Result } from '../shared/types'
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE } from '../shared/attachments'
 import { exportFileName, toJson, toMarkdown } from '../shared/export'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
@@ -126,8 +127,44 @@ async function skillSummaries() {
   return { recs, settings, list: recs.map((r) => summarize(r, settings.skills)) }
 }
 
+/** Delete image files that no conversation references any more (new files are spared: a draft may still be unsent). */
+async function pruneAttachments() {
+  try {
+    const refs = await store.referencedAttachmentIds()
+    if (refs) await services.attachments.prune(refs)
+  } catch (e) {
+    console.warn('attachment cleanup failed:', (e as Error).message)
+  }
+}
+
 function registerIpc() {
   const h = ipcMain.handle.bind(ipcMain)
+  h('attachments:save', (_e, name: unknown, bytes: unknown) =>
+    expected(async () => {
+      if (typeof name !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('Invalid image data.')
+      return services.attachments.save(bytes, name)
+    })
+  )
+  h('attachments:pick', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const opts = {
+      title: 'Attach images',
+      properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }]
+    }
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
+    if (r.canceled) return { ok: true, value: [] }
+    return expected(async () => {
+      const out = []
+      for (const f of r.filePaths.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
+        const st = await fsp.stat(f)
+        if (st.size > MAX_ATTACHMENT_BYTES * 4) throw new Error(`${path.basename(f)} is too large.`)
+        out.push(await services.attachments.save(await fsp.readFile(f), path.basename(f)))
+      }
+      return out
+    })
+  })
+  h('attachments:dataUrl', (_e, a) => services.attachments.dataUrl(a))
   h('conversations:list', () => store.listConversations())
   h('conversations:get', (_e, id: string) => store.getConversation(id))
   h('conversations:create', () => store.createConversation())
@@ -138,9 +175,10 @@ function registerIpc() {
       await store.saveConversation(c)
     }
   })
-  h('conversations:remove', (_e, id: string) => {
+  h('conversations:remove', async (_e, id: string) => {
     chat.stop(id)
-    return store.deleteConversation(id)
+    await store.deleteConversation(id)
+    void pruneAttachments()
   })
   h('conversations:setModel', async (_e, id: string, providerId: string, model: string) => {
     const c = await store.getConversation(id)
@@ -305,6 +343,7 @@ if (!app.requestSingleInstanceLock()) {
     await store.initStore()
     initServices(app.getPath('userData'))
     await store.pruneEmptyConversations()
+    void pruneAttachments()
     nativeTheme.themeSource = (await store.getSettings()).theme
     registerIpc()
     // OAuth for remote MCP servers: tokens live encrypted in userData; the browser is the system browser.

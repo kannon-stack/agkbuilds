@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ModelPicker } from './ModelPicker'
 import { useStore } from '../store'
 import { applicableMemories } from '../../../shared/memory'
+import { MAX_ATTACHMENTS_PER_MESSAGE, IMAGE_MIMES } from '../../../shared/attachments'
+import type { Attachment } from '../../../shared/types'
+import { prepareImage } from '../images'
+import { Thumbs } from './Thumbs'
 
 interface Props {
   generating: boolean
   disabled: boolean
-  onSend(text: string): void
+  onSend(text: string, attachments?: Attachment[]): void
   onStop(): void
 }
 
@@ -20,6 +24,8 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
   const [text, setText] = useState('')
   const [sel, setSel] = useState(0)
   const [dismissed, setDismissed] = useState(false)
+  const [files, setFiles] = useState<Attachment[]>([])
+  const [dragging, setDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
   const { settings, skills, memory, openSettings, refreshMemory, showToast } = useStore()
   const tools = settings?.tools
@@ -55,11 +61,34 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
     ref.current?.focus()
   }
 
+  // Save images (picked, pasted or dropped) and show them as thumbnails until the message is sent.
+  const addBlobs = async (items: { blob: Blob; name: string }[]) => {
+    const room = MAX_ATTACHMENTS_PER_MESSAGE - files.length
+    if (items.length > room) showToast(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} images per message.`)
+    for (const it of items.slice(0, Math.max(0, room))) {
+      try {
+        const { name, bytes } = await prepareImage(it.blob, it.name)
+        const r = await window.api.attachments.save(name, bytes)
+        if (!r.ok) showToast(r.error)
+        else setFiles((cur) => (cur.some((x) => x.id === r.value.id) || cur.length >= MAX_ATTACHMENTS_PER_MESSAGE ? cur : [...cur, r.value]))
+      } catch (e) {
+        showToast((e as Error).message)
+      }
+    }
+  }
+  const pick = async () => {
+    const r = await window.api.attachments.pick()
+    if (!r.ok) return showToast(r.error)
+    setFiles((cur) => [...cur, ...r.value.filter((a) => !cur.some((x) => x.id === a.id))].slice(0, MAX_ATTACHMENTS_PER_MESSAGE))
+  }
+  const imagesIn = (list: FileList | null | undefined) =>
+    [...(list ?? [])].filter((f) => (IMAGE_MIMES as readonly string[]).includes(f.type)).map((f) => ({ blob: f as Blob, name: f.name || 'pasted-image' }))
+
   const submit = async () => {
     const t = text.trim()
-    if (!t || generating || disabled) return
+    if ((!t && !files.length) || generating || disabled) return
     // /remember <note>: handled locally — saves instantly, no model call.
-    const rem = /^\/remember(?:\s+([\s\S]*))?$/.exec(t)
+    const rem = files.length ? null : /^\/remember(?:\s+([\s\S]*))?$/.exec(t)
     if (rem && memoryOn) {
       const note = (rem[1] ?? '').trim()
       if (!note) return showToast('Usage: /remember <something to remember>')
@@ -68,13 +97,32 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
       if (r.ok) { setText(''); await refreshMemory() }
       return
     }
-    onSend(t)
+    onSend(t, files.length ? files : undefined)
     setText('')
+    setFiles([])
   }
 
   return (
     <div className="composer-wrap">
-      <div className="composer">
+      <div
+        className={`composer ${dragging ? 'dragging' : ''}`}
+        onDragOver={(e) => {
+          if ([...e.dataTransfer.types].includes('Files')) {
+            e.preventDefault()
+            setDragging(true)
+          }
+        }}
+        onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDragging(false)}
+        onDrop={(e) => {
+          setDragging(false)
+          const imgs = imagesIn(e.dataTransfer.files)
+          if (e.dataTransfer.files.length && !imgs.length) showToast('Only PNG, JPEG, GIF and WebP images can be attached.')
+          if (imgs.length) {
+            e.preventDefault()
+            void addBlobs(imgs)
+          }
+        }}
+      >
         {menuOpen && (
           <div className="slash-menu" role="listbox" aria-label="Commands">
             {matches.map((c, i) => (
@@ -86,6 +134,7 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
             ))}
           </div>
         )}
+        <Thumbs items={files} onRemove={(id) => setFiles((cur) => cur.filter((x) => x.id !== id))} />
         <textarea
           ref={ref}
           rows={1}
@@ -93,6 +142,13 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
           autoFocus
           placeholder="Message… (Enter to send, Shift+Enter for a new line, / for commands)"
           onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            const imgs = imagesIn(e.clipboardData.files)
+            if (imgs.length) {
+              e.preventDefault()
+              void addBlobs(imgs)
+            }
+          }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (menuOpen) {
@@ -111,6 +167,9 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
         />
         <div className="composer-row">
           <div className="composer-left">
+            <button className="attach-btn" onClick={() => void pick()} title="Attach images (or paste / drop them)" aria-label="Attach images" disabled={files.length >= MAX_ATTACHMENTS_PER_MESSAGE}>
+              📎
+            </button>
             <ModelPicker />
             <button
               className={`chip ${tools?.enabled ? 'on' : ''}`}
@@ -135,7 +194,7 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
               ■
             </button>
           ) : (
-            <button className="send" onClick={() => void submit()} disabled={!text.trim() || disabled} aria-label="Send" title="Send">
+            <button className="send" onClick={() => void submit()} disabled={(!text.trim() && !files.length) || disabled} aria-label="Send" title="Send">
               ↑
             </button>
           )}

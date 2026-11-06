@@ -6,6 +6,7 @@ import type { SkillSummary } from '../../shared/skills'
 import type { ThemeOverride } from './applyTheme'
 import { setLeaf } from '../../shared/tree'
 import type {
+  Attachment,
   ChatEvent,
   ConnectionResult,
   SettingsPatch,
@@ -44,7 +45,7 @@ interface State {
   newChat(): Promise<void>
   remove(id: string): Promise<void>
   rename(id: string, title: string): Promise<void>
-  send(text: string): Promise<void>
+  send(text: string, attachments?: Attachment[]): Promise<void>
   regenerate(): Promise<void>
   /** Rewrite a user message: the edit becomes a new branch and is answered. */
   edit(messageId: string, text: string): Promise<void>
@@ -151,13 +152,13 @@ export const useStore = create<State>((set, get) => ({
     if (active?.id === id) set({ active: { ...active, title } })
   },
 
-  async send(text) {
+  async send(text, attachments) {
     const { active, settings } = get()
     if (!active || !settings || get().generating[active.id]) return
     const { providerId, model } = effectiveModel(get())
     set((s) => ({ generating: { ...s.generating, [active.id]: true } }))
     try {
-      const conv = await window.api.chat.send({ conversationId: active.id, content: text, providerId, model })
+      const conv = await window.api.chat.send({ conversationId: active.id, content: text, attachments, providerId, model })
       set({ active: conv })
       void get().refreshList()
     } catch (e) {

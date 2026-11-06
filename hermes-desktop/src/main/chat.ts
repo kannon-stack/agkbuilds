@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import { MAX_TOOL_STEPS, metaFor } from '../shared/toolMeta'
-import type { ChatEvent, Conversation, Message, ToolCall, ToolDecision } from '../shared/types'
-import { streamChat, type ParsedToolCall, type StreamEvent, type WireMessage } from './openai'
+import type { ChatEvent, Conversation, EditRequest, SendRequest, Message, ToolCall, ToolDecision } from '../shared/types'
+import { streamChat, type ParsedToolCall, type StreamEvent, type WireContentPart, type WireMessage } from './openai'
+import { missingImageNote, type ImageLookup } from '../shared/attachments'
 import { streamAnthropic, toAnthropicMessages, toAnthropicTools } from './anthropic'
 import { DEFAULT_ANTHROPIC_OPTIONS, refusalMessage } from '../shared/anthropic'
 import { activeTools, authorize, getTool, systemNote, toToolDefs, ToolError } from './tools'
@@ -31,7 +32,7 @@ const emit = (wc: WebContents, e: ChatEvent) => {
 const SAVE_EVERY_MS = 1500
 
 /** Turn stored messages into the provider's wire format (assistant tool_calls + tool results). */
-export function toWire(messages: Message[]): WireMessage[] {
+export function toWire(messages: Message[], images: ImageLookup = new Map()): WireMessage[] {
   const out: WireMessage[] = []
   for (const m of messages) {
     if (m.role === 'assistant' && m.toolCalls?.length) {
@@ -43,6 +44,19 @@ export function toWire(messages: Message[]): WireMessage[] {
       for (const c of m.toolCalls) {
         out.push({ role: 'tool', tool_call_id: c.id, content: c.result ?? 'Interrupted before completion.' })
       }
+    } else if (m.role === 'user' && m.attachments?.length) {
+      // Images first, then the text. A file that has gone missing is mentioned rather than silently dropped.
+      const parts: WireContentPart[] = []
+      const notes: string[] = []
+      for (const a of m.attachments) {
+        const b64 = images.get(a.id)
+        if (b64) parts.push({ type: 'image_url', image_url: { url: `data:${a.mime};base64,${b64}` } })
+        else notes.push(missingImageNote(a.name))
+      }
+      const body = m.skill ? skillInvocation(m.skill.name, m.skill.text, parseSlash(m.content)?.args ?? '') : m.content
+      const text = [body, ...notes].filter(Boolean).join('\n')
+      if (text) parts.push({ type: 'text', text })
+      if (parts.length) out.push({ role: 'user', content: parts })
     } else if (m.content && !m.error) {
       // A /skill invocation carries its (snapshotted) instructions into the model's view of this turn.
       const content = m.role === 'user' && m.skill ? skillInvocation(m.skill.name, m.skill.text, parseSlash(m.content)?.args ?? '') : m.content
@@ -68,6 +82,19 @@ function waitForApproval(callId: string, signal: AbortSignal): Promise<ToolDecis
 
 export function decide(callId: string, decision: ToolDecision): void {
   pendingApprovals.get(callId)?.(decision)
+}
+
+/** Base64 data for every image on the path (so each request can include them; files that vanished are simply absent). */
+async function loadImages(history: Message[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const m of history) {
+    for (const a of m.attachments ?? []) {
+      if (out.has(a.id)) continue
+      const buf = await services.attachments.read(a)
+      if (buf) out.set(a.id, buf.toString('base64'))
+    }
+  }
+  return out
 }
 
 /** Stream an answer as a new child of `parentId` (the user message being answered). */
@@ -139,7 +166,8 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
 
       // History = everything before this (still empty) assistant message.
       const history = pathTo(conv, assistant.parentId)
-      const wire: WireMessage[] = [...(system ? [{ role: 'system' as const, content: system }] : []), ...toWire(history)]
+      const images = await loadImages(history)
+      const wire: WireMessage[] = [...(system ? [{ role: 'system' as const, content: system }] : []), ...toWire(history, images)]
 
       let calls: ParsedToolCall[] = []
       let refusal: string | undefined
@@ -151,7 +179,7 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
               apiKey: decryptKey(provider),
               model: useModel,
               system,
-              messages: toAnthropicMessages(history),
+              messages: toAnthropicMessages(history, images),
               tools: toAnthropicTools(toolDefs),
               options: provider.options ?? DEFAULT_ANTHROPIC_OPTIONS,
               signal: ctl.signal
@@ -275,16 +303,17 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
 
 export async function sendMessage(
   wc: WebContents,
-  req: { conversationId: string; content: string; providerId?: string; model?: string }
+  req: SendRequest
 ): Promise<Conversation> {
   const conv = await getConversation(req.conversationId)
   if (!conv) throw new Error('Conversation not found')
   if (active.has(conv.id)) throw new Error('A response is already being generated')
   const content = req.content.trim()
-  if (!content) throw new Error('Empty message')
+  const attachments = await services.attachments.verifyAll(req.attachments)
+  if (!content && !attachments.length) throw new Error('Empty message')
 
-  const skill = await resolveSkill(content)
-  const user = addUserMessage(conv, { content, ...(skill ? { skill } : {}) })
+  const skill = content ? await resolveSkill(content) : undefined
+  const user = addUserMessage(conv, { content, attachments, ...(skill ? { skill } : {}) })
   await saveConversation(conv)
 
   void generate(wc, conv, user.id, req.providerId, req.model) // streams via events
@@ -303,15 +332,16 @@ async function resolveSkill(content: string): Promise<Message['skill']> {
 
 export async function editMessage(
   wc: WebContents,
-  req: { conversationId: string; messageId: string; content: string; providerId?: string; model?: string }
+  req: EditRequest
 ): Promise<Conversation> {
   const conv = await getConversation(req.conversationId)
   if (!conv) throw new Error('Conversation not found')
   if (active.has(conv.id)) throw new Error('A response is already being generated')
   const content = req.content.trim()
   const orig = conv.messages.find((m) => m.id === req.messageId)
-  if (!content && !orig?.attachments?.length) throw new Error('Empty message')
-  const user = editUserMessage(conv, req.messageId, { content, skill: await resolveSkill(content) })
+  const attachments = req.attachments === undefined ? undefined : await services.attachments.verifyAll(req.attachments)
+  if (!content && !(attachments ?? orig?.attachments)?.length) throw new Error('Empty message')
+  const user = editUserMessage(conv, req.messageId, { content, attachments, skill: await resolveSkill(content) })
   await saveConversation(conv)
   void generate(wc, conv, user.id, req.providerId, req.model)
   return conv

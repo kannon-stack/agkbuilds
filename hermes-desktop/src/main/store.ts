@@ -269,8 +269,9 @@ export async function saveConversation(c: Conversation, opts: { touch?: boolean 
 
 /** All non-empty conversations, re-reading only files that changed (search runs on every keystroke). */
 const readCache = new Map<string, { sig: string; conv: Conversation }>()
-export async function loadAllConversations(): Promise<Conversation[]> {
+async function scanConversations(): Promise<{ convs: Conversation[]; failed: number }> {
   const out: Conversation[] = []
+  let failed = 0
   const seen = new Set<string>()
   for (const f of await fs.readdir(convDir())) {
     if (!f.endsWith('.json')) continue
@@ -282,7 +283,10 @@ export async function loadAllConversations(): Promise<Conversation[]> {
       let hit = readCache.get(file)
       if (!hit || hit.sig !== sig) {
         const raw = await readJson<Conversation>(file)
-        if (!raw) continue
+        if (!raw || !Array.isArray(raw.messages)) {
+          failed++
+          continue
+        }
         hit = { sig, conv: normalizeTree(raw) }
         readCache.set(file, hit)
       }
@@ -292,7 +296,18 @@ export async function loadAllConversations(): Promise<Conversation[]> {
     }
   }
   for (const k of readCache.keys()) if (!seen.has(k)) readCache.delete(k)
-  return out
+  return { convs: out, failed }
+}
+
+export const loadAllConversations = async (): Promise<Conversation[]> => (await scanConversations()).convs
+
+/** Ids of every stored image any chat refers to — or null if some chat file couldn't be read (then nothing may be deleted). */
+export async function referencedAttachmentIds(): Promise<Set<string> | null> {
+  const { convs, failed } = await scanConversations()
+  if (failed) return null
+  const ids = new Set<string>()
+  for (const c of convs) for (const m of c.messages) for (const a of m.attachments ?? []) ids.add(a.id)
+  return ids
 }
 
 export async function searchAll(query: string): Promise<SearchResult[]> {

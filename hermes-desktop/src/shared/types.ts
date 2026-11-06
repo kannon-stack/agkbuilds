@@ -177,6 +177,8 @@ export interface ProviderInput {
 export interface SendRequest {
   conversationId: string
   content: string
+  /** Images already saved through `api.attachments`; the main process re-validates them. */
+  attachments?: Attachment[]
   providerId?: string
   model?: string
 }
@@ -186,6 +188,8 @@ export interface EditRequest {
   /** The user message being edited; the edit becomes a sibling branch. */
   messageId: string
   content: string
+  /** Omit to keep the original message's images. */
+  attachments?: Attachment[]
   providerId?: string
   model?: string
 }
@@ -214,6 +218,14 @@ export interface ConnectionResult {
 
 /** The API surface the preload script exposes as `window.api`. */
 export interface Api {
+  attachments: {
+    /** Store image bytes (validated by content, ≤5 MB). */
+    save(name: string, bytes: Uint8Array): Promise<Result<Attachment>>
+    /** Native file picker for images. Cancelling returns an empty list. */
+    pick(): Promise<Result<Attachment[]>>
+    /** The image as a data: URL for display (null if the file is gone). */
+    dataUrl(a: Attachment): Promise<string | null>
+  }
   conversations: {
     list(): Promise<ConversationSummary[]>
     get(id: string): Promise<Conversation | null>
