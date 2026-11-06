@@ -393,7 +393,13 @@ npm install          # downloads the Electron binary (~100 MB)
 npm run dev          # hot-reload dev app
 npm run typecheck && npm test
 npm run build && npm start
+xvfb-run -a npm run e2e   # end-to-end suites (tests/e2e/*.e2e.cjs); see README → Tests
 ```
+
+The e2e suites are plain Node scripts using `playwright-core`'s `_electron`: each starts a fake OpenAI-/Anthropic-compatible server (or a
+fixture MCP server from `tests/fixtures/`), launches the app with a throwaway `--user-data-dir`, drives the UI, and asserts on both the
+screen and the requests the fake provider received. They print `• ok:` / `✗ FAIL:` lines; `tests/e2e/run.cjs` runs them one by one
+(they share port 20128), shows the full log of any failing suite, and exits non-zero.
 
 On first launch, open Settings → Providers → set the base URL (defaults to 9router's
 `http://localhost:20128/v1`), paste your key, **Test connection**, pick a default model.

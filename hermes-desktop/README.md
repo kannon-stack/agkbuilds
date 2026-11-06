@@ -52,6 +52,15 @@ npm run dist:mac       # dmg + zip, x64 + arm64 (build on macOS)
 npm run icons          # re-render build/icon.png from build/icon.svg
 ```
 
+### Tests
+- `npm test` — unit/integration tests (vitest, no window; fast).
+- `npm run e2e` — builds, then drives the **real app** through 16 suites (chat, tools, MCP + OAuth, Claude, theming, memory/skills,
+  branching, export, search, attachments, context, titles…) against local fake providers, with Playwright's Electron driver.
+  `node tests/e2e/run.cjs search titles` runs a subset (after `npm run build`); `E2E_VERBOSE=1` streams each suite's log.
+  On Linux without a display use `xvfb-run -a npm run e2e`. The fake providers use port **20128** (9router's default) — stop 9router first.
+  To test a packaged build: `TALARIA_UNFUSED=1 npm run pack`, then `TALARIA_BIN=release/linux-unpacked/talaria node tests/e2e/run.cjs`
+  (release builds disable the fuses Playwright needs to attach). CI runs both on every push.
+
 `dist*` scripts run the build and **`verify:bundle`** first (fails if the compiled app requires a module that isn't shipped).
 Output names: `Talaria-<version>-<os>-<arch>.<ext>`. Build switches (env vars) are documented at the top of
 `electron-builder.config.cjs`.
