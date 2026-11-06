@@ -168,13 +168,14 @@ function registerIpc() {
   h('conversations:list', () => store.listConversations())
   h('conversations:get', (_e, id: string) => store.getConversation(id))
   h('conversations:create', () => store.createConversation())
-  h('conversations:rename', async (_e, id: string, title: string) => {
-    const c = await store.getConversation(id)
-    if (c) {
-      c.title = title.trim() || c.title
-      await store.saveConversation(c)
-    }
-  })
+  h('conversations:rename', (_e, id: string, title: string) => chat.renameChat(id, String(title ?? '')))
+  h('conversations:retitle', (e, id: string) =>
+    expected(async () => {
+      const t = await chat.generateTitle(e.sender, id, true)
+      if (!t) throw new Error('The model didn’t return a usable title. Try again, or rename the chat yourself.')
+      return t
+    })
+  )
   h('conversations:remove', async (_e, id: string) => {
     chat.stop(id)
     await store.deleteConversation(id)

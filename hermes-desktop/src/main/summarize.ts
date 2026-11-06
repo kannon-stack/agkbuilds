@@ -21,7 +21,17 @@ export interface SummarizeOptions {
   signal?: AbortSignal
 }
 
-async function once(o: SummarizeOptions, user: string): Promise<string> {
+export interface CompleteOptions {
+  kind: 'openai' | 'anthropic'
+  baseUrl: string
+  apiKey?: string
+  model: string
+  anthropicOptions?: AnthropicOptions
+  signal?: AbortSignal
+}
+
+/** One plain, tool-less completion; returns the full text. Stops reading once `maxChars` have arrived (for short answers). */
+export async function completeText(o: CompleteOptions, system: string, user: string, maxChars = Infinity): Promise<string> {
   let text = ''
   const events =
     o.kind === 'anthropic'
@@ -29,9 +39,9 @@ async function once(o: SummarizeOptions, user: string): Promise<string> {
           baseUrl: o.baseUrl,
           apiKey: o.apiKey,
           model: o.model,
-          system: SUMMARY_SYSTEM,
+          system,
           messages: [{ role: 'user', content: user }],
-          // Keep the summarizer simple and cheap: no reasoning output, no caching.
+          // Keep helper calls simple and cheap: no reasoning output, no caching.
           options: { ...(o.anthropicOptions ?? DEFAULT_ANTHROPIC_OPTIONS), showThinking: false, promptCaching: false },
           signal: o.signal
         })
@@ -40,15 +50,21 @@ async function once(o: SummarizeOptions, user: string): Promise<string> {
           apiKey: o.apiKey,
           model: o.model,
           messages: [
-            { role: 'system', content: SUMMARY_SYSTEM },
+            { role: 'system', content: system },
             { role: 'user', content: user }
           ],
           temperature: 0.2,
           signal: o.signal
         })
-  for await (const ev of events) if (ev.type === 'text') text += ev.text
+  for await (const ev of events) {
+    if (ev.type !== 'text') continue
+    text += ev.text
+    if (text.length >= maxChars) break // generator cleanup cancels the request
+  }
   return text.trim()
 }
+
+const once = (o: SummarizeOptions, user: string) => completeText(o, SUMMARY_SYSTEM, user)
 
 /** Ask the model for a summary of `messages` (folding in `previous`). Throws on provider errors or an empty reply. */
 export async function summarize(o: SummarizeOptions): Promise<string> {

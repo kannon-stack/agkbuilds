@@ -19,7 +19,8 @@ import {
   autoCompactAt, chooseBoundary, contextUsage, estimateMessages, estimateText, fitToWindow, inputBudget, KEEP_TURNS_AUTO, KEEP_TURNS_MANUAL,
   liveRegion, MIN_WINDOW, parseOverflow, summaryBlock, windowFor, type ContextUsage, type WindowInfo
 } from '../shared/context'
-import { summarize } from './summarize'
+import { completeText, summarize } from './summarize'
+import { sanitizeTitle, titleBasis, titleRequest, TITLE_SYSTEM, wantsAutoTitle } from '../shared/titles'
 import { addUserMessage, editUserMessage, OpError, prepareRegenerate } from './conversationOps'
 
 /** Active generations, keyed by conversation id. One at a time per conversation. */
@@ -100,6 +101,74 @@ async function loadImages(history: Message[]): Promise<Map<string, string>> {
     }
   }
   return out
+}
+
+/** Conversations being generated right now (their in-memory copy is the one that gets saved, so edits made meanwhile must go through it). */
+const liveConvs = new Map<string, Conversation>()
+
+/** Change a conversation without losing the update to a running generation's later saves. Returns null if it no longer exists. */
+async function mutateConversation(id: string, fn: (c: Conversation) => void): Promise<Conversation | null> {
+  const conv = liveConvs.get(id) ?? (await getConversation(id))
+  if (!conv) return null
+  fn(conv)
+  await saveConversation(conv, { touch: false })
+  return conv
+}
+
+/** Set a title by hand; it is never changed automatically afterwards. */
+export async function renameChat(id: string, title: string): Promise<void> {
+  const t = title.replace(/\s+/g, ' ').trim().slice(0, 120)
+  if (!t) return
+  await mutateConversation(id, (c) => {
+    c.title = t
+    c.titleSource = 'manual'
+  })
+}
+
+/**
+ * Ask the model for a short title from the first exchange. `force` (the "Regenerate title" action) also replaces a typed title.
+ * Returns the new title, or null when skipped / the model gave nothing usable. Throws on provider errors.
+ */
+export async function generateTitle(wc: WebContents, id: string, force = false): Promise<string | null> {
+  const settings = await getSettings()
+  if (!force && !settings.titles.enabled) return null
+  const conv = liveConvs.get(id) ?? (await getConversation(id))
+  if (!conv || (!force && !wantsAutoTitle(conv))) return null
+  const basis = titleBasis(conv)
+  if (!basis) return null
+  const provider = await getProviderRecord(conv.providerId ?? settings.activeProviderId)
+  const model = settings.titles.model || conv.model || provider?.defaultModel || ''
+  if (!provider || !model) return null
+
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), 25_000)
+  let raw: string
+  try {
+    raw = await completeText(
+      { kind: provider.kind, baseUrl: provider.baseUrl, apiKey: decryptKey(provider), model, anthropicOptions: provider.options, signal: ctl.signal },
+      TITLE_SYSTEM,
+      titleRequest(basis.user, basis.assistant),
+      300
+    )
+  } catch (e) {
+    if (ctl.signal.aborted) throw new Error('timed out')
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+  const title = sanitizeTitle(raw)
+  if (!title) return null
+  let applied = false
+  await mutateConversation(id, (c) => {
+    // The user may have typed a title while we were waiting; theirs wins (unless this was an explicit regenerate).
+    if (!force && (c.titleSource === 'manual' || c.titleSource === 'generated')) return
+    c.title = title
+    c.titleSource = 'generated'
+    applied = true
+  })
+  if (!applied) return null
+  emit(wc, { type: 'title', conversationId: id, title })
+  return title
 }
 
 /** Context windows learned from "maximum context length is N" errors (in memory), per provider+model. */
@@ -196,6 +265,7 @@ export async function compactChat(wc: WebContents, conversationId: string, instr
   if (!provider || !model) return { ok: false, error: 'Choose a provider and model first.' }
   const ctl = new AbortController()
   active.set(conv.id, ctl)
+  liveConvs.set(conv.id, conv)
   try {
     const compaction = await compactPath(wc, conv, pathOf(conv), {
       provider, model, settings, window: await resolveWindow(provider, model, settings), auto: false, keep: KEEP_TURNS_MANUAL,
@@ -208,6 +278,7 @@ export async function compactChat(wc: WebContents, conversationId: string, instr
     return { ok: false, error: err.name === 'AbortError' || ctl.signal.aborted ? 'Cancelled.' : `Couldn’t summarize: ${err.message}` }
   } finally {
     active.delete(conv.id)
+    liveConvs.delete(conv.id)
   }
 }
 
@@ -237,6 +308,7 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
 
   const ctl = new AbortController()
   active.set(conv.id, ctl)
+  liveConvs.set(conv.id, conv)
   const allowed = chatAllowed.get(conv.id) ?? chatAllowed.set(conv.id, new Set()).get(conv.id)!
 
   const newAssistant = async (parent: string): Promise<Message> => {
@@ -256,9 +328,12 @@ async function generate(wc: WebContents, conv: Conversation, parentId: string, p
     active.delete(conv.id)
     if (kind === 'error') last.error = error
     await saveConversation(conv)
+    liveConvs.delete(conv.id)
     emit(wc, kind === 'error'
       ? { type: 'error', conversationId: conv.id, messageId: last.id, error: error! }
       : { type: 'done', conversationId: conv.id, messageId: last.id })
+    // A title is a nicety: write it in the background, never delay or fail the turn.
+    if (kind === 'done' && last.content.trim()) void generateTitle(wc, conv.id).catch(() => {})
   }
 
   if (!provider) return end('error', 'No provider configured. Open Settings to add one.')

@@ -172,8 +172,35 @@ function General() {
         <input type="range" min={0} max={2} step={0.1} value={temp} onChange={(e) => setTemp(+e.target.value)} onMouseUp={() => update({ temperature: temp })} onKeyUp={() => update({ temperature: temp })} />
         <span className="hint">Lower is more focused, higher is more creative.</span>
       </label>
+      <Titles />
       <Context />
       <About />
+    </div>
+  )
+}
+
+function Titles() {
+  const { settings, patchSettings } = useStore()
+  const t = settings!.titles
+  const [model, setModel] = useState(t.model)
+  return (
+    <div className="ctx-settings">
+      <h3 className="subhead">Chat titles</h3>
+      <label className="check switch">
+        <input type="checkbox" checked={t.enabled} onChange={(e) => void patchSettings({ titles: { enabled: e.target.checked } })} />
+        <span>
+          <b>Let the model name new chats</b>
+          <span className="hint"> After the first reply, a short title replaces the placeholder (your first message). Titles you type yourself are never changed.</span>
+        </span>
+      </label>
+      <label>
+        Model for titles
+        <input
+          placeholder="Same as the chat" value={model} disabled={!t.enabled} spellCheck={false}
+          onChange={(e) => setModel(e.target.value)} onBlur={() => void patchSettings({ titles: { model } })}
+        />
+        <span className="hint">A small, fast model is plenty (used with the chat’s provider), e.g. claude-haiku-5-5. Leave empty to use the chat’s own model.</span>
+      </label>
     </div>
   )
 }

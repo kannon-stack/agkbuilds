@@ -23,7 +23,10 @@ export function addUserMessage(conv: Conversation, input: UserInput): Message {
   const node: Message = { id: randomUUID(), role: 'user', content: input.content, createdAt: Date.now(), parentId: leaf?.id ?? null }
   if (input.attachments?.length) node.attachments = input.attachments
   if (input.skill) node.skill = input.skill
-  if (conv.messages.length === 0) conv.title = titleFrom(input.content || input.attachments?.[0]?.name || 'Image')
+  if (conv.messages.length === 0) {
+    conv.title = titleFrom(input.content || input.attachments?.[0]?.name || 'Image')
+    conv.titleSource = 'auto'
+  }
   conv.messages.push(node)
   setLeaf(conv, node.id)
   return node
@@ -40,7 +43,11 @@ export function editUserMessage(conv: Conversation, messageId: string, input: Us
   if (input.skill) node.skill = input.skill
   conv.messages.push(node)
   setLeaf(conv, node.id)
-  if (!orig.parentId) conv.title = titleFrom(input.content || attachments?.[0]?.name || 'Image')
+  // Rewriting the opening message re-derives the title (a generated one no longer fits) — but never over one the user typed.
+  if (!orig.parentId && conv.titleSource !== 'manual') {
+    conv.title = titleFrom(input.content || attachments?.[0]?.name || 'Image')
+    conv.titleSource = 'auto'
+  }
   return node
 }
 

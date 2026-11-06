@@ -8,6 +8,7 @@ import type { SkillFull, SkillInput, SkillSummary, SkillsSettings } from './skil
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus } from './mcp'
 import type { SearchResult } from './search'
 import type { ContextSettings, ContextUsage } from './context'
+import type { TitleSettings, TitleSource } from './titles'
 
 export const APP_NAME = 'Talaria' // working title — change in one place
 /** Reverse-DNS app id (Windows taskbar grouping, macOS bundle id). Keep in sync with electron-builder.config.js. */
@@ -103,6 +104,8 @@ export type Result<T = void> = { ok: true; value: T } | { ok: false; error: stri
 export interface Conversation {
   id: string
   title: string
+  /** Who set the title (missing = 'auto': the first message, truncated). */
+  titleSource?: TitleSource
   createdAt: number
   updatedAt: number
   /** Every message node of every branch. The visible chat is the path from the root to `leafId`. */
@@ -165,6 +168,7 @@ export interface Settings {
   memory: MemorySettings
   skills: SkillsSettings
   context: ContextSettings
+  titles: TitleSettings
 }
 
 export interface MemorySettings {
@@ -172,8 +176,9 @@ export interface MemorySettings {
   enabled: boolean
 }
 
-export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance' | 'memory' | 'skills' | 'context'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'providers' | 'tools' | 'mcpServers' | 'appearance' | 'memory' | 'skills' | 'context' | 'titles'>> & {
   context?: Partial<ContextSettings>
+  titles?: Partial<TitleSettings>
   tools?: Partial<ToolSettings>
   appearance?: Partial<Appearance>
   memory?: Partial<MemorySettings>
@@ -227,6 +232,8 @@ export type ChatEvent =
   /** Older messages are being summarized (before the answer starts). */
   | { type: 'compacting'; conversationId: string }
   | { type: 'compacted'; conversationId: string; messageId: string; compaction: Compaction }
+  /** The conversation was (re)titled. */
+  | { type: 'title'; conversationId: string; title: string }
   /** A heads-up for the user (e.g. history was trimmed to fit). */
   | { type: 'notice'; conversationId: string; text: string }
   | { type: 'done'; conversationId: string; messageId: string }
@@ -252,7 +259,10 @@ export interface Api {
     list(): Promise<ConversationSummary[]>
     get(id: string): Promise<Conversation | null>
     create(): Promise<Conversation>
+    /** Set a title by hand (it then stays put). */
     rename(id: string, title: string): Promise<void>
+    /** Ask the model for a fresh title for this chat. */
+    retitle(id: string): Promise<Result<string>>
     remove(id: string): Promise<void>
     setModel(id: string, providerId: string, model: string): Promise<void>
     /** Full-text search across every message of every chat (all branches). */

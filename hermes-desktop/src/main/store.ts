@@ -20,6 +20,7 @@ import { ANTHROPIC_BASE_URL, normalizeAnthropicOptions } from '../shared/anthrop
 import { DEFAULT_APPEARANCE, sanitizeAppearance, type Appearance } from '../shared/theme'
 import { normalizeTree, pathOf } from '../shared/tree'
 import { cleanContext, DEFAULT_CONTEXT, type ContextSettings } from '../shared/context'
+import { cleanTitleSettings, DEFAULT_TITLES, type TitleSettings } from '../shared/titles'
 import { searchConversations, type SearchResult } from '../shared/search'
 
 /**
@@ -40,6 +41,7 @@ interface SettingsFile {
   memory: MemorySettings
   skills: SkillsSettings
   context: ContextSettings
+  titles: TitleSettings
 }
 
 const DEFAULT_PROVIDER: ProviderRecord = {
@@ -61,7 +63,8 @@ const DEFAULTS: SettingsFile = {
   appearance: DEFAULT_APPEARANCE,
   memory: { enabled: true },
   skills: { enabled: true, disabled: [], trusted: {} },
-  context: DEFAULT_CONTEXT
+  context: DEFAULT_CONTEXT,
+  titles: DEFAULT_TITLES
 }
 
 let root = ''
@@ -145,6 +148,7 @@ async function loadSettingsFile(): Promise<SettingsFile> {
   merged.memory = { enabled: f?.memory?.enabled !== false }
   merged.skills = cleanSkills(f?.skills)
   merged.context = cleanContext(f?.context)
+  merged.titles = cleanTitleSettings(f?.titles)
   // Re-validate on every load: the file may be hand-edited or from an older version.
   merged.appearance = sanitizeAppearance(f?.appearance, DEFAULT_APPEARANCE)
   merged.mcpServers = (f?.mcpServers ?? []).map((r) => ({ ...r, env: r.env ?? {}, headers: r.headers ?? {}, toolPolicies: r.toolPolicies ?? {} }))
@@ -213,6 +217,7 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   if (patch.memory?.enabled !== undefined) next.memory = { enabled: !!patch.memory.enabled }
   if (patch.skills) next.skills = cleanSkills({ ...f.skills, ...patch.skills })
   if (patch.context) next.context = cleanContext(patch.context, f.context)
+  if (patch.titles) next.titles = cleanTitleSettings(patch.titles, f.titles)
   if (patch.appearance) next.appearance = sanitizeAppearance(patch.appearance, f.appearance)
   if (patch.tools) {
     next.tools = { ...f.tools, ...patch.tools, policies: { ...f.tools.policies, ...(patch.tools.policies ?? {}) } }

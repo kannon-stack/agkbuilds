@@ -339,6 +339,23 @@ about what is *sent*; the full chat always stays visible and stored.
 - Limits: summaries are model-written (lossy by nature — view them via the divider); token counts are estimates unless the provider reports
   usage; only the active branch is considered; the summarizer uses the chat's own model/provider (cost); no per-provider window setting yet.
 
+## Conversation titles
+
+A new chat is titled instantly with its first message (truncated) so the sidebar is never blank, then — after the first reply finishes —
+the model writes a 2–6 word title (`generateTitle` in `chat.ts`; pure helpers in `shared/titles.ts`).
+- `Conversation.titleSource` = `auto` (placeholder; also what legacy chats are treated as) | `generated` | `manual`. **Typed titles are never
+  overwritten automatically**; editing the opening message re-derives `auto`/`generated` titles (the topic changed) but not `manual` ones.
+- Retries on later turns only while the title is still a placeholder and the chat has ≤3 user turns (e.g. the first attempt failed).
+  Failures are silent — the placeholder just stays. Background, 25 s timeout, never delays or fails the reply.
+- The request is tiny and tool-less (`completeText` in `main/summarize.ts`, shared with compaction): first user message (≤700 chars) +
+  start of the first answer (≤500). Output is sanitized (`sanitizeTitle`: quotes, `Title:` prefixes, markdown, trailing punctuation, ≤60 chars;
+  rambling replies are rejected). **Settings → General → Chat titles:** on/off and an optional cheaper model (used on the chat's provider).
+- **Race safety:** a generation holds its own in-memory conversation and re-saves it, which would clobber a title written meanwhile.
+  `liveConvs` tracks those objects; renames and generated titles are applied through `mutateConversation`, so they land on whichever copy
+  will be saved last (and a rename typed while a title is being generated wins).
+- UI: double-click the header title (or ⋯ → *Rename…*) or double-click in the sidebar to rename; ⋯ → *Regenerate title* forces a new one
+  (even over a typed title — explicit action).
+
 ## Customization roadmap (designed-for, not built)
 
 The seams already exist so these are additive:
@@ -364,7 +381,7 @@ The seams already exist so these are additive:
 - Theming: fonts must already be installed (none are bundled); sidebar width and spacing aren't themable yet; no scheduled (time-of-day) theme switching.
 - Tools: one global workspace; shell commands are unsandboxed; no output streaming from long commands (result appears when it finishes); parallel tool calls run sequentially; models without tool-calling support need Tools switched off.
 - Reasoning/"thinking" deltas from providers (e.g. `reasoning_content`) are ignored, not shown.
-- Conversation titles are the first user message (truncated), not model-generated.
+- Titles are written once from the first exchange (not updated as the topic drifts); no title language setting (it follows the user's language).
 - Not yet packaged/code-signed (`npm run dist` uses electron-builder defaults, untested). Tested on Linux only (Xvfb); macOS/Windows untested.
 - The renderer bundle is ~1.5 MB (all highlight.js languages) — fine for desktop, trimmable later.
 

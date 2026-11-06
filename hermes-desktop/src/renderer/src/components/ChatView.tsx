@@ -7,10 +7,45 @@ import { MessageItem } from './MessageItem'
 import { ExportMenu } from './ExportMenu'
 import { CompactionDivider } from './CompactionDivider'
 
+/** Chat title in the header: double-click (or ⋯ → Rename…) to edit. */
+function EditableTitle({ id, title, editing, onEditing }: { id: string; title: string; editing: boolean; onEditing(v: boolean): void }) {
+  const rename = useStore((s) => s.rename)
+  const [draft, setDraft] = useState(title)
+  useEffect(() => {
+    if (editing) setDraft(title)
+  }, [editing])
+  const commit = async () => {
+    onEditing(false)
+    const t = draft.trim()
+    if (t && t !== title) await rename(id, t)
+  }
+  return editing ? (
+    <input
+      className="title-input"
+      aria-label="Chat title"
+      autoFocus
+      value={draft}
+      maxLength={120}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') void commit()
+        if (e.key === 'Escape') onEditing(false)
+      }}
+    />
+  ) : (
+    <h1 title="Double-click to rename" onDoubleClick={() => onEditing(true)}>
+      {title}
+    </h1>
+  )
+}
+
 export function ChatView() {
   const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings, compacting } = useStore()
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  const [renaming, setRenaming] = useState(false)
   const [away, setAway] = useState(false) // scrolled up from the latest message
   // The messages on screen = the branch ending at the conversation's leaf.
   const path = useMemo(() => (active ? pathOf(active) : []), [active])
@@ -49,8 +84,8 @@ export function ChatView() {
   return (
     <main className="chat">
       <header className="chat-head">
-        <h1>{empty ? 'New chat' : active!.title}</h1>
-        {!empty && <ExportMenu conversationId={active!.id} />}
+        {empty ? <h1>New chat</h1> : <EditableTitle key={active!.id} id={active!.id} title={active!.title} editing={renaming} onEditing={setRenaming} />}
+        {!empty && <ExportMenu conversationId={active!.id} onRename={() => setRenaming(true)} />}
       </header>
       <div
         className="scroller"

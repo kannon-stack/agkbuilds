@@ -49,6 +49,8 @@ interface State {
   newChat(): Promise<void>
   remove(id: string): Promise<void>
   rename(id: string, title: string): Promise<void>
+  /** Ask the model for a new title for the open chat. */
+  retitle(): Promise<void>
   send(text: string, attachments?: Attachment[]): Promise<void>
   regenerate(): Promise<void>
   /** Rewrite a user message: the edit becomes a new branch and is answered. */
@@ -154,7 +156,15 @@ export const useStore = create<State>((set, get) => ({
     await window.api.conversations.rename(id, title)
     await get().refreshList()
     const { active } = get()
-    if (active?.id === id) set({ active: { ...active, title } })
+    if (active?.id === id) set({ active: { ...active, title, titleSource: 'manual' } })
+  },
+
+  async retitle() {
+    const { active } = get()
+    if (!active) return
+    get().showToast('Writing a new title…')
+    const r = await window.api.conversations.retitle(active.id)
+    get().showToast(r.ok ? `Renamed to “${r.value}”` : r.error)
   },
 
   async send(text, attachments) {
@@ -289,6 +299,11 @@ export const useStore = create<State>((set, get) => ({
       }
       return
     }
+    if (e.type === 'title') {
+      set((s) => ({ active: s.active?.id === e.conversationId ? { ...s.active, title: e.title, titleSource: 'generated' } : s.active }))
+      void get().refreshList()
+      return
+    }
     if (e.type === 'compacting') {
       set((s) => ({ compacting: { ...s.compacting, [e.conversationId]: true } }))
       return
@@ -345,6 +360,8 @@ export const useStore = create<State>((set, get) => ({
           ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
           ...(patch.memory ? { memory: { ...cur.memory, ...patch.memory } } : {}),
           ...(patch.skills ? { skills: { ...cur.skills, ...patch.skills } } : {}),
+          ...(patch.context ? { context: { ...cur.context, ...patch.context } } : {}),
+          ...(patch.titles ? { titles: { ...cur.titles, ...patch.titles } } : {}),
           ...(patch.tools ? { tools: { ...cur.tools, ...patch.tools, policies: { ...cur.tools.policies, ...(patch.tools.policies ?? {}) } } } : {})
         }
       })

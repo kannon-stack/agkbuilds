@@ -488,3 +488,8 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .compacting { padding: 6px 0; font-style: italic; }
 .ctx-settings { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
 .ctx-settings .subhead { margin: 0; font-size: calc(13px * var(--font-scale, 1)); }
+
+/* titles */
+.title-input { flex: 1; min-width: 0; font: inherit; font-size: calc(14px * var(--font-scale, 1)); font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px; outline: 0; }
+.chat-head h1 { cursor: text; }
+.export-menu .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
