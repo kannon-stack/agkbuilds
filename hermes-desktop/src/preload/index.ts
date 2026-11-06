@@ -62,6 +62,10 @@ const api: Api = {
     save: (input) => invoke('mcp:save', input),
     remove: (id) => invoke('mcp:remove', id),
     restart: (id) => invoke('mcp:restart', id),
+    signIn: (id) => invoke('mcp:signIn', id),
+    signOut: (id) => invoke('mcp:signOut', id),
+    cancelAuth: (id) => invoke('mcp:cancelAuth', id),
+    reopenAuth: (id) => invoke('mcp:reopenAuth', id),
     parseImport: (text) => invoke('mcp:parseImport', text),
     onStatus: (cb) => {
       const listener = (_: unknown, s: McpServerStatus[]) => cb(s)

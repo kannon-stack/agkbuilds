@@ -400,3 +400,13 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .reasoning-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: calc(13px * var(--font-scale, 1)); margin-top: 4px; max-height: 260px; overflow-y: auto; }
 .served-by { color: var(--accent); }
 .usage { color: var(--muted); font: calc(11.5px * var(--font-scale, 1)) var(--font-mono); }
+
+/* ---------- MCP OAuth ---------- */
+.mcp-dot.needs_auth { background: var(--accent); }
+.mcp-dot.authorizing { background: var(--accent); animation: pulse 1.2s infinite; }
+.mcp-server.mcp-needs_auth, .mcp-server.mcp-authorizing { border-color: color-mix(in srgb, var(--accent), transparent 55%); }
+.tool-notice .btn { margin: 4px 6px 0 0; padding: 4px 12px; }
+.tool-notice .btn.signin { justify-content: center; }
+.oauth-adv { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; }
+.oauth-adv > summary { cursor: pointer; font-weight: 500; }
+.oauth-adv .form { margin-top: 10px; }

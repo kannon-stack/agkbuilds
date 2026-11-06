@@ -34,6 +34,7 @@ Open data folder**). **Uninstalling never deletes them.**
   `./Talaria-*.AppImage --no-sandbox` (weaker isolation of the browser engine), or allow user namespaces for the AppImage via AppArmor.
 - **An MCP server fails with "command not found" (`npx`, `uvx`…)** when the app is started from the Dock/Start menu: GUI apps
   don't inherit your terminal's `PATH`. Use the command's absolute path (e.g. `/opt/homebrew/bin/npx`), or start Talaria from a terminal.
+- **Remote MCP server says “Sign-in required”:** press **Sign in** (Settings → MCP). If a browser can't reach `127.0.0.1:33418`, check for a local firewall; if the server has no automatic app registration, add its Client ID under *OAuth settings (advanced)*.
 - **Report a problem:** **Settings → General → Copy diagnostics** gives version/OS info to paste into an issue.
 
 ## Build from source

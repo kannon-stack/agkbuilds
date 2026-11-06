@@ -4,6 +4,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
+import { CallbackServer, NeedsInteractiveAuth, OAuthStore, TalariaOAuthProvider } from './oauth'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { McpServerStatus, McpToolInfo } from '../../shared/mcp'
 import type { McpServerRecord, Secret } from '../store'
@@ -28,6 +30,9 @@ interface Conn {
   stderr: string
   /** True while we are the ones closing it (so onclose isn't reported as a failure). */
   closing: boolean
+  /** User pressed Sign in: this connection may open the browser and register a client. */
+  interactive?: boolean
+  provider?: TalariaOAuthProvider
   connecting?: Promise<void>
 }
 
@@ -35,8 +40,20 @@ export interface McpDeps {
   decrypt(s?: Secret): string | undefined
 }
 
+export interface OAuthDeps {
+  store: OAuthStore
+  callback: CallbackServer
+  openBrowser(url: string): Promise<void>
+}
+
+/** The user-visible outcome of a failed/cancelled sign-in (not a crash). */
+class AuthFlowError extends Error {}
+
+const isAuthError = (e: unknown): boolean =>
+  e instanceof UnauthorizedError || e instanceof NeedsInteractiveAuth || (e as { code?: number })?.code === 401 || /\b401\b|unauthori[sz]ed/i.test((e as Error)?.message ?? '')
+
 const fingerprint = (r: McpServerRecord) =>
-  JSON.stringify([r.enabled, r.transport, r.command, r.args, r.url, r.env, r.headers])
+  JSON.stringify([r.enabled, r.transport, r.command, r.args, r.url, r.env, r.headers, r.oauth])
 
 const withTimeout = <T>(p: Promise<T>, ms: number, what: string) =>
   new Promise<T>((resolve, reject) => {
@@ -51,14 +68,25 @@ export class McpManager {
   /** Working directory for local servers (the chat workspace, else home). Applied at (re)connect. */
   private workspace = ''
 
+  private oauth?: OAuthDeps
+
   constructor(private deps: McpDeps) {}
+
+  /** Enable OAuth for remote servers (call once the user-data dir is known). */
+  initOAuth(o: OAuthDeps): void {
+    this.oauth = o
+  }
 
   /** Reconcile live connections with the saved config. Fire-and-forget; see settled(). */
   sync(records: McpServerRecord[], workspace = ''): void {
     this.workspace = workspace
     this.order = records.map((r) => r.id)
     const wanted = new Set(records.map((r) => r.id))
-    for (const [id, c] of this.conns) if (!wanted.has(id)) void this.disconnect(c).then(() => this.conns.delete(id))
+    for (const [id, c] of this.conns) {
+      if (wanted.has(id)) continue
+      void this.disconnect(c).then(() => this.conns.delete(id))
+      void this.oauth?.store.clear(id, 'all') // a removed server must not leave tokens behind
+    }
 
     for (const record of records) {
       const fp = fingerprint(record)
@@ -75,13 +103,33 @@ export class McpManager {
     this.emit()
   }
 
-  restart(id: string): void {
+  restart(id: string, interactive = false): void {
     const c = this.conns.get(id)
     if (!c || !c.record.enabled) return
-    const next: Conn = { record: c.record, fingerprint: c.fingerprint, state: 'connecting', tools: [], stderr: '', closing: false }
+    const next: Conn = { record: c.record, fingerprint: c.fingerprint, state: 'connecting', tools: [], stderr: '', closing: false, interactive }
     this.conns.set(id, next)
     next.connecting = this.disconnect(c).then(() => this.connect(next))
     this.emit()
+  }
+
+  /** Start the browser sign-in for a remote server (opens the system browser; resolves via settled()). */
+  signIn(id: string): void {
+    const c = this.conns.get(id)
+    if (c && c.record.transport !== 'stdio') this.restart(id, true)
+  }
+
+  /** Forget this server's tokens and client registration, then reconnect (it will ask for sign-in again). */
+  async signOut(id: string): Promise<void> {
+    await this.oauth?.store.clear(id, 'all')
+    this.restart(id)
+  }
+
+  cancelAuth(id: string): void {
+    this.conns.get(id)?.provider?.cancel('Sign-in was cancelled.')
+  }
+
+  reopenAuth(id: string): Promise<void> {
+    return this.conns.get(id)?.provider?.reopen() ?? Promise.resolve()
   }
 
   /** Resolves when no server is still connecting (or after `ms`). */
@@ -101,6 +149,7 @@ export class McpManager {
         state: c.state,
         error: c.error,
         serverInfo: c.serverInfo,
+        signedIn: c.record.transport !== 'stdio' ? !!this.oauth?.store.hasTokens(id) : undefined,
         stderr: c.stderr.trim() ? c.stderr.trim().slice(-1500) : undefined,
         tools: c.tools.map((t): McpToolInfo => ({
           name: t.name,
@@ -163,6 +212,13 @@ export class McpManager {
           res = await live.client.callTool({ name: t.name, arguments: args ?? {} }, undefined, { signal: ctx.signal, timeout: CALL_TIMEOUT_MS })
         } catch (e) {
           if (ctx.signal.aborted) throw new ToolError('Cancelled by user.')
+          if (isAuthError(e)) {
+            // Token refresh failed: surface "sign in again" instead of a cryptic transport error.
+            live.state = 'needs_auth'
+            live.error = 'Your sign-in expired. Sign in again.'
+            this.emit()
+            throw new ToolError(`MCP server "${server}" needs you to sign in again (Settings → MCP).`)
+          }
           throw new ToolError(`MCP error from "${server}": ${(e as Error).message}`)
         }
         const text = formatToolResult(res)
@@ -180,7 +236,7 @@ export class McpManager {
     }
   }
 
-  private makeTransport(conn: Conn): Transport {
+  private makeTransport(conn: Conn, authProvider?: TalariaOAuthProvider): Transport {
     const r = conn.record
     const secrets = (m: Record<string, Secret>) =>
       Object.fromEntries(Object.entries(m).map(([k, v]) => [k, this.deps.decrypt(v) ?? '']).filter(([, v]) => v !== ''))
@@ -206,7 +262,19 @@ export class McpManager {
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only http(s) URLs are supported.')
     const requestInit = { headers: secrets(r.headers) }
-    return r.transport === 'sse' ? new SSEClientTransport(url, { requestInit }) : new StreamableHTTPClientTransport(url, { requestInit })
+    return r.transport === 'sse' ? new SSEClientTransport(url, { requestInit, authProvider }) : new StreamableHTTPClientTransport(url, { requestInit, authProvider })
+  }
+
+  private needsAuth(conn: Conn, message?: string) {
+    if (this.conns.get(conn.record.id) !== conn) return
+    conn.state = 'needs_auth'
+    conn.error = message ?? 'This server requires you to sign in.'
+    this.emit()
+    void this.disconnect(conn)
+  }
+
+  private manualOAuth(r: McpServerRecord) {
+    return r.oauth ? { clientId: r.oauth.clientId || undefined, clientSecret: this.deps.decrypt(r.oauth.clientSecret), scope: r.oauth.scope || undefined } : undefined
   }
 
   private async connect(conn: Conn): Promise<void> {
@@ -217,8 +285,14 @@ export class McpManager {
       this.emit()
       void this.disconnect(conn)
     }
-    try {
-      const transport = this.makeTransport(conn)
+    const id = conn.record.id
+    const remote = conn.record.transport !== 'stdio'
+    const oauth = this.oauth
+    let acquired = false
+
+    // One connection attempt (fresh Client + transport — a failed one can't be reused).
+    const attempt = async (provider?: TalariaOAuthProvider) => {
+      const transport = this.makeTransport(conn, provider)
       const client = new Client({ name: 'talaria', version: '0.1.0' }, { capabilities: {} })
       conn.client = client
       conn.transport = transport
@@ -232,24 +306,72 @@ export class McpManager {
         }
       })
       client.onclose = () => {
-        if (conn.closing || this.conns.get(conn.record.id) !== conn) return
+        if (conn.closing || conn.client !== client || this.conns.get(id) !== conn) return
         conn.state = 'error'
         conn.error = 'Connection closed unexpectedly. Restart the server to reconnect.'
         this.emit()
       }
-
       await client.connect(transport, { timeout: CONNECT_TIMEOUT_MS })
+      return client
+    }
+
+    try {
+      // OAuth is only in play when the user asked to sign in, or tokens already exist (silent refresh).
+      let provider: TalariaOAuthProvider | undefined
+      if (remote && oauth && (conn.interactive || oauth.store.hasTokens(id))) {
+        if (conn.interactive) {
+          await oauth.callback.acquire()
+          acquired = true
+        }
+        provider = new TalariaOAuthProvider({
+          serverId: id, store: oauth.store, callback: oauth.callback, interactive: !!conn.interactive,
+          openBrowser: oauth.openBrowser, manual: this.manualOAuth(conn.record)
+        })
+        conn.provider = provider
+      }
+
+      let client: Client
+      try {
+        client = await attempt(provider)
+      } catch (e) {
+        if (!isAuthError(e)) throw e
+        if (!conn.interactive || !provider) return this.needsAuth(conn)
+        // Interactive: the browser is open (or the server needs a manually registered app). Wait for the redirect.
+        let code: string
+        try {
+          conn.state = 'authorizing'
+          conn.error = undefined
+          this.emit()
+          code = await provider.waitForCode()
+        } catch (waitErr) {
+          throw new AuthFlowError((waitErr as Error).message)
+        }
+        const failedTransport = conn.transport as unknown as { finishAuth(code: string): Promise<void> }
+        await failedTransport.finishAuth(code)
+        const failedClient = conn.client
+        client = await attempt(provider)
+        void failedClient?.close().catch(() => {}) // the pre-sign-in client is dead weight; its onclose is ignored (see attempt)
+      }
+
       const v = client.getServerVersion()
       conn.serverInfo = v ? `${v.name} ${v.version}` : undefined
       conn.tools = client.getServerCapabilities()?.tools ? await withTimeout(this.listAll(client), CONNECT_TIMEOUT_MS, 'Listing tools') : []
-      if (this.conns.get(conn.record.id) !== conn) return void (await this.disconnect(conn))
+      if (this.conns.get(id) !== conn) return void (await this.disconnect(conn))
       conn.state = 'connected'
       conn.error = undefined
+      provider?.settle() // from now on: refresh silently, never pop a browser window on our own
       this.emit()
     } catch (e) {
+      if (e instanceof AuthFlowError) return this.needsAuth(conn, e.message)
+      if (isAuthError(e)) return this.needsAuth(conn)
+      if (/dynamic client registration/i.test((e as Error)?.message ?? '')) {
+        return fail(new Error("This server doesn't support automatic app registration. Add a Client ID (and secret, if it has one) under “OAuth settings” for this server, using the redirect URI shown there."))
+      }
       // Surface the server's own complaint (e.g. "command not found", missing API key) when there is one.
       const tail = conn.stderr.trim().split('\n').filter(Boolean).slice(-2).join(' ')
       fail(tail ? new Error(`${(e as Error).message} — ${tail}`) : e)
+    } finally {
+      if (acquired) oauth!.callback.release()
     }
   }
 
@@ -266,6 +388,7 @@ export class McpManager {
 
   private async disconnect(conn: Conn): Promise<void> {
     conn.closing = true
+    conn.provider?.cancel('Connection was replaced.')
     const c = conn.client
     conn.client = undefined
     if (!c) return

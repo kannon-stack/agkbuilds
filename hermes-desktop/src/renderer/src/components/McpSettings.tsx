@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useStore } from '../store'
 import type { McpImportResult, McpServer, McpServerInput, McpServerStatus, McpTransportKind } from '../../../shared/mcp'
-import { joinCommand, splitCommand } from '../../../shared/mcp'
+import { OAUTH_REDIRECT_URL, joinCommand, splitCommand } from '../../../shared/mcp'
 import type { ToolPolicy } from '../../../shared/toolMeta'
 
 const STATE_LABEL: Record<McpServerStatus['state'], string> = {
   disabled: 'Disabled',
   connecting: 'Connecting…',
   connected: 'Connected',
-  error: 'Error'
+  error: 'Error',
+  needs_auth: 'Sign-in required',
+  authorizing: 'Waiting for sign-in…'
 }
 const TRANSPORT_LABEL: Record<McpTransportKind, string> = { stdio: 'Local command', http: 'Remote (HTTP)', sse: 'Remote (SSE)' }
 
@@ -17,6 +19,14 @@ const toInput = (s: McpServer, patch: Partial<McpServerInput> = {}): McpServerIn
   id: s.id, name: s.name, enabled: s.enabled, transport: s.transport, command: s.command, args: s.args, url: s.url,
   policy: s.policy, toolPolicies: s.toolPolicies, ...patch
 })
+
+const hostOf = (u?: string) => {
+  try {
+    return new URL(u ?? '').host
+  } catch {
+    return u ?? 'this server'
+  }
+}
 
 const launchLine = (s: McpServer) => (s.transport === 'stdio' ? joinCommand(s.command ?? '', s.args) : s.url ?? '')
 
@@ -76,6 +86,7 @@ export function McpSettings() {
                   {STATE_LABEL[state]}
                   {state === 'connected' && ` · ${st!.tools.length} tool${st!.tools.length === 1 ? '' : 's'}`}
                   {state === 'connected' && st?.serverInfo && ` · ${st.serverInfo}`}
+                  {s.transport !== 'stdio' && st?.signedIn && state === 'connected' && ' · signed in'}
                 </span>
               </div>
               <label className="check mcp-toggle" title="Enable / disable this server">
@@ -89,7 +100,25 @@ export function McpSettings() {
                 {st?.stderr && <pre className="mcp-stderr">{st.stderr}</pre>}
               </div>
             )}
+            {state === 'needs_auth' && (
+              <div className="tool-notice">
+                {st?.error ?? 'This server requires you to sign in.'}{' '}
+                <button className="btn primary signin" onClick={() => window.api.mcp.signIn(s.id)}>Sign in</button>
+              </div>
+            )}
+            {state === 'authorizing' && (
+              <div className="tool-notice">
+                Finish signing in in your browser, then come back here. Only approve if you recognise <b>{hostOf(s.url)}</b>.{' '}
+                <button className="btn" onClick={() => window.api.mcp.reopenAuth(s.id)}>Open sign-in page again</button>{' '}
+                <button className="btn" onClick={() => window.api.mcp.cancelAuth(s.id)}>Cancel</button>
+              </div>
+            )}
             <div className="mcp-actions">
+              {s.transport !== 'stdio' && st?.signedIn && (
+                <button className="link-btn" onClick={() => confirm(`Sign out of “${s.name}”? Its stored sign-in will be deleted from this computer.`) && window.api.mcp.signOut(s.id)}>
+                  Sign out
+                </button>
+              )}
               {state === 'connected' && st!.tools.length > 0 && (
                 <button className="link-btn" onClick={() => setOpen({ ...open, [s.id]: !open[s.id] })}>
                   {open[s.id] ? 'Hide tools' : 'Show tools'}
@@ -206,6 +235,10 @@ function ServerForm({ server, onDone, onSave }: { server?: McpServer; onDone(): 
   const [policy, setPolicy] = useState<ToolPolicy>(server?.policy ?? 'ask')
   const [envRows, setEnvRows] = useState<Row[]>(rowsOf(server?.envKeys))
   const [hdrRows, setHdrRows] = useState<Row[]>(rowsOf(server?.headerKeys))
+  const [oauthId, setOauthId] = useState(server?.oauth?.clientId ?? '')
+  const [oauthSecret, setOauthSecret] = useState('')
+  const [clearSecret, setClearSecret] = useState(false)
+  const [oauthScope, setOauthScope] = useState(server?.oauth?.scope ?? '')
   const [err, setErr] = useState('')
 
   const submit = async () => {
@@ -225,7 +258,7 @@ function ServerForm({ server, onDone, onSave }: { server?: McpServer; onDone(): 
       id: server?.id,
       name: name.trim() || (transport === 'stdio' ? argv.find((a) => !a.startsWith('-') && a !== 'npx' && a !== 'uvx') ?? 'server' : new URL(url).hostname),
       enabled, transport, policy, toolPolicies: server?.toolPolicies,
-      ...(transport === 'stdio' ? { command: argv[0], args: argv.slice(1), envSet: env.set, envRemove: env.remove } : { url, headersSet: hdr.set, headersRemove: hdr.remove })
+      ...(transport === 'stdio' ? { command: argv[0], args: argv.slice(1), envSet: env.set, envRemove: env.remove } : { url, headersSet: hdr.set, headersRemove: hdr.remove, oauth: { clientId: oauthId, clientSecret: clearSecret || !oauthId ? '' : oauthSecret || undefined, scope: oauthScope } })
     })
     onDone()
   }
@@ -262,9 +295,38 @@ function ServerForm({ server, onDone, onSave }: { server?: McpServer; onDone(): 
           <label>
             URL
             <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" spellCheck={false} />
-            <span className="hint">Servers that require OAuth sign-in aren’t supported yet — use one that accepts an API key/token header.</span>
+            <span className="hint">If the server needs you to sign in (OAuth), Talaria will show a <b>Sign in</b> button after you add it — no token to paste.</span>
           </label>
-          <KVEditor title="Headers" hint="e.g. Authorization: Bearer … Stored encrypted when an OS keychain exists; never shown again." rows={hdrRows} setRows={setHdrRows} keyPlaceholder="Authorization" />
+          <KVEditor title="Headers" hint="Only for servers that take a fixed API key/token, e.g. Authorization: Bearer … Stored encrypted when an OS keychain exists; never shown again." rows={hdrRows} setRows={setHdrRows} keyPlaceholder="Authorization" />
+          <details className="oauth-adv" open={!!(server?.oauth?.clientId || server?.oauth?.scope)}>
+            <summary>OAuth settings (advanced)</summary>
+            <div className="form">
+              <span className="hint">
+                Most servers register Talaria automatically. Fill these in only if the server requires a pre-registered app, and register this redirect URI with it: <code>{OAUTH_REDIRECT_URL}</code>
+              </span>
+              <label>
+                Client ID
+                <input value={oauthId} onChange={(e) => setOauthId(e.target.value)} spellCheck={false} autoComplete="off" />
+              </label>
+              <label>
+                Client secret <span className="muted small">(optional)</span>
+                <input
+                  type="password"
+                  value={oauthSecret}
+                  autoComplete="off"
+                  onChange={(e) => { setOauthSecret(e.target.value); setClearSecret(false) }}
+                  placeholder={server?.oauth?.hasClientSecret && !clearSecret ? '•••••••• saved (leave blank to keep)' : ''}
+                />
+                {server?.oauth?.hasClientSecret && (
+                  <label className="check"><input type="checkbox" checked={clearSecret} onChange={(e) => setClearSecret(e.target.checked)} /> Remove saved secret</label>
+                )}
+              </label>
+              <label>
+                Scope <span className="muted small">(optional)</span>
+                <input value={oauthScope} onChange={(e) => setOauthScope(e.target.value)} placeholder="e.g. mcp:read" spellCheck={false} />
+              </label>
+            </div>
+          </details>
         </>
       )}
       <label>

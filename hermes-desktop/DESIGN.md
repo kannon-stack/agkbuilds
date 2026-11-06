@@ -112,6 +112,32 @@ agent loop, the same approval cards and the same policy system. Uses the officia
 - **Results:** text is passed through (≤30 k chars); `isError` results show as failed cards; images/audio
   are described, not displayed.
 
+### MCP OAuth (remote servers)
+Remote (HTTP/SSE) servers that need a sign-in show **Sign-in required** with a **Sign in** button — no token to paste. Uses the SDK's OAuth 2.1
+client (protected-resource + authorization-server discovery, dynamic client registration, PKCE S256, `resource` indicator); our part is the
+provider in `src/main/mcp/oauth.ts` and the lifecycle in `manager.ts`.
+
+- **Nothing happens until you click.** A server only gets an OAuth provider when it already has stored tokens (silent refresh) or you pressed
+  **Sign in**. A bare 401 at launch is just the "Sign-in required" state: no browser window, no client registration at the server. Once signed in,
+  the provider is switched to background-only, so a failed refresh later can *never* pop a browser by itself — the card goes back to
+  "Sign-in required" and a tool call says "sign in again".
+- **Browser round-trip:** system browser → `http://127.0.0.1:33418/callback` (RFC 8252 loopback; another free port only if that one is busy, with
+  automatic re-registration). The listener exists only while a sign-in is pending, binds 127.0.0.1 only, serves only `GET /callback`, accepts
+  each random `state` **once** (forged/replayed/unknown states get 400 and don't disturb the real flow), times out after 5 min, and can be
+  cancelled. Its pages escape all text and set a strict CSP.
+- **Safety checks:** authorization pages must be `https` (or loopback `http`); `file:`, `javascript:`, non-loopback `http` are refused before
+  anything opens. The UI shows the host you're approving. The PKCE verifier lives in memory only.
+- **Token storage:** `mcp-oauth.json` (0600): client registration + tokens encrypted via the OS keychain (`safeStorage`, same path as API
+  keys; plaintext fallback with a private file where no keychain exists). The renderer only ever sees `signedIn: true`. **Sign out** and
+  **removing the server** delete the stored credentials.
+- **Refresh:** access tokens are refreshed in the background by the SDK (rotating refresh tokens supported) while a connection is live and on the
+  next launch.
+- **Servers without automatic registration:** *Edit → OAuth settings (advanced)*: Client ID, optional secret (write-only), optional scope, with
+  the redirect URI to register shown. Without them such a server gives a clear error that says exactly this.
+- **Tested** against a fake OAuth-protected MCP server (discovery, registration, PKCE verification, single-use codes, rotating refresh,
+  expiry, deny, revoked refresh) with the real SDK, plus an end-to-end run in the app. **Not tested** against a real hosted MCP provider.
+  Not supported: client-credentials/enterprise-managed flows, URL-based client IDs (CIMD), step-up re-authorization for new scopes.
+
 Code: `src/main/mcp/` (`manager.ts` connections + ToolImpl adapter, `util.ts` pure helpers),
 `src/renderer/src/components/McpSettings.tsx`. Tests use a real SDK-based fixture server over stdio and HTTP.
 
@@ -262,8 +288,7 @@ The seams already exist so these are additive:
 ## Known limitations (v1)
 
 - Text only: no attachments/images, no message editing/branching, no export.
-- MCP: tools only (no resources, prompts, sampling or elicitation); no OAuth sign-in for remote servers
-  (use servers that take a token header); server `instructions` aren't forwarded to the model; images
+- MCP: tools only (no resources, prompts, sampling or elicitation); OAuth covers the interactive browser flow only; server `instructions` aren't forwarded to the model; images
   aren't rendered; local servers keep the working directory they started with (restart after changing
   workspace). When the app is launched from the macOS Dock/Windows Start menu, `PATH` may lack tools like
   `npx`/`uvx` that a terminal has — use an absolute path to the command if a server fails to start.

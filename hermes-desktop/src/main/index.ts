@@ -12,6 +12,8 @@ import { listClaudeModels } from './anthropic'
 import type { ProviderKind } from '../shared/anthropic'
 import { mcp } from './mcp/instance'
 import { parseImport } from './mcp/util'
+import { CallbackServer, OAuthStore } from './mcp/oauth'
+import { OAUTH_REDIRECT_PORT } from '../shared/mcp'
 import { resolveAppearance } from '../shared/theme'
 import { initServices, services } from './services'
 import { MemoryError } from './memory'
@@ -223,6 +225,10 @@ function registerIpc() {
     return s
   })
   h('mcp:restart', (_e, id: string) => mcp.restart(id))
+  h('mcp:signIn', (_e, id: string) => mcp.signIn(id))
+  h('mcp:signOut', (_e, id: string) => mcp.signOut(id))
+  h('mcp:cancelAuth', (_e, id: string) => mcp.cancelAuth(id))
+  h('mcp:reopenAuth', (_e, id: string) => mcp.reopenAuth(id))
   h('mcp:parseImport', (_e, text: string) => parseImport(String(text)))
 
   h('settings:pickWorkspace', async (e) => {
@@ -265,6 +271,14 @@ if (!app.requestSingleInstanceLock()) {
     await store.pruneEmptyConversations()
     nativeTheme.themeSource = (await store.getSettings()).theme
     registerIpc()
+    // OAuth for remote MCP servers: tokens live encrypted in userData; the browser is the system browser.
+    const oauthStore = new OAuthStore(path.join(app.getPath('userData'), 'mcp-oauth.json'), { encrypt: store.encryptSecret, decrypt: store.decryptSecret })
+    await oauthStore.init()
+    mcp.initOAuth({
+      store: oauthStore,
+      callback: new CallbackServer({ preferredPort: OAUTH_REDIRECT_PORT }),
+      openBrowser: (url) => shell.openExternal(url)
+    })
     mcp.onStatus = (status) => BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.webContents.send('mcp:status', status))
     void syncMcp() // connect enabled servers in the background
     await createWindow()

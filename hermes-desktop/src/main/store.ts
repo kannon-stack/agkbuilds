@@ -97,6 +97,8 @@ function encryptKey(plain: string): Secret {
   return { encrypted: false, value: plain }
 }
 
+export const encryptSecret = (plain: string): Secret => encryptKey(plain)
+
 export function decryptSecret(s?: Secret): string | undefined {
   if (!s) return undefined
   if (!s.encrypted) return s.value
@@ -123,6 +125,8 @@ export interface McpServerRecord {
   headers: Record<string, Secret>
   policy: McpServer['policy']
   toolPolicies: Record<string, McpServer['policy']>
+  /** Optional pre-registered OAuth app for remote servers. */
+  oauth?: { clientId?: string; clientSecret?: Secret; scope?: string }
 }
 
 // ---------- Settings ----------
@@ -161,7 +165,10 @@ const toPublicMcp = (r: McpServerRecord): McpServer => ({
   envKeys: Object.keys(r.env),
   headerKeys: Object.keys(r.headers),
   policy: r.policy,
-  toolPolicies: r.toolPolicies
+  toolPolicies: r.toolPolicies,
+  ...(r.oauth && (r.oauth.clientId || r.oauth.scope || r.oauth.clientSecret)
+    ? { oauth: { clientId: r.oauth.clientId, hasClientSecret: !!r.oauth.clientSecret, scope: r.oauth.scope } }
+    : {})
 })
 
 /** Normalise (possibly hand-edited) skill settings: arrays of names, name→hash map. */
@@ -332,6 +339,16 @@ export async function saveMcpServer(input: McpServerInput): Promise<Settings> {
   }
   applySecrets(rec.env, input.envSet, input.envRemove)
   applySecrets(rec.headers, input.headersSet, input.headersRemove)
+  if (input.transport === 'stdio') delete rec.oauth
+  else if (input.oauth) {
+    const o = { ...(rec.oauth ?? {}) }
+    o.clientId = input.oauth.clientId?.trim() || undefined
+    o.scope = input.oauth.scope?.trim().replace(/\s+/g, ' ') || undefined
+    if (input.oauth.clientSecret !== undefined) o.clientSecret = input.oauth.clientSecret ? encryptKey(input.oauth.clientSecret) : undefined
+    if (!o.clientId) delete o.clientSecret // a secret without an id is meaningless
+    rec.oauth = o.clientId || o.scope ? o : undefined
+    if (!rec.oauth) delete rec.oauth
+  }
   if (!existing) f.mcpServers.push(rec)
   await writeJson(settingsPath(), f)
   return toSettings(f)

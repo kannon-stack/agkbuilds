@@ -18,6 +18,8 @@ export interface McpServer {
   policy: ToolPolicy
   /** Per-tool overrides keyed by the server's own tool name. */
   toolPolicies: Record<string, ToolPolicy>
+  /** Remote servers: optional pre-registered OAuth app (most servers register Talaria automatically). */
+  oauth?: { clientId?: string; hasClientSecret: boolean; scope?: string }
 }
 
 /** What the renderer sends to create/update a server. */
@@ -36,6 +38,8 @@ export interface McpServerInput {
   headersRemove?: string[]
   policy: ToolPolicy
   toolPolicies?: Record<string, ToolPolicy>
+  /** clientSecret: undefined = keep, '' = clear. */
+  oauth?: { clientId?: string; clientSecret?: string; scope?: string }
 }
 
 export interface McpToolInfo {
@@ -47,7 +51,11 @@ export interface McpToolInfo {
   readOnly?: boolean
 }
 
-export type McpState = 'disabled' | 'connecting' | 'connected' | 'error'
+export type McpState = 'disabled' | 'connecting' | 'connected' | 'error' | 'needs_auth' | 'authorizing'
+
+/** Fixed loopback port for the OAuth callback (RFC 8252); another is used only if this one is busy. */
+export const OAUTH_REDIRECT_PORT = 33418
+export const OAUTH_REDIRECT_URL = `http://127.0.0.1:${OAUTH_REDIRECT_PORT}/callback`
 
 export interface McpServerStatus {
   id: string
@@ -55,6 +63,8 @@ export interface McpServerStatus {
   error?: string
   tools: McpToolInfo[]
   serverInfo?: string
+  /** Remote servers: OAuth tokens are stored for this server (booleans only — tokens never leave the main process). */
+  signedIn?: boolean
   /** Last lines the server wrote to stderr (stdio only) — handy for diagnosing failures. */
   stderr?: string
 }

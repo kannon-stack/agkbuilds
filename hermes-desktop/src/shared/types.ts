@@ -240,6 +240,11 @@ export interface Api {
     save(input: McpServerInput): Promise<Settings>
     remove(id: string): Promise<Settings>
     restart(id: string): Promise<void>
+    /** Remote servers: start the browser sign-in / forget the stored sign-in / abort a pending one / re-open its page. */
+    signIn(id: string): Promise<void>
+    signOut(id: string): Promise<void>
+    cancelAuth(id: string): Promise<void>
+    reopenAuth(id: string): Promise<void>
     /** Parse a pasted `{ "mcpServers": {...} }` config (Claude Desktop / Cursor format). */
     parseImport(text: string): Promise<McpImportResult>
     onStatus(cb: (s: McpServerStatus[]) => void): () => void
