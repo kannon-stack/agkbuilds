@@ -1,0 +1,62 @@
+{
+  "name": "talaria-desktop",
+  "productName": "Talaria",
+  "version": "0.1.0",
+  "description": "Talaria: a customizable AI chat desktop app with tools, MCP, memory and skills",
+  "author": {
+    "name": "Dylan Borgen",
+    "email": "dylanborgen@gmail.com"
+  },
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/kannon-stack/agkbuilds",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kannon-stack/agkbuilds.git",
+    "directory": "hermes-desktop"
+  },
+  "private": true,
+  "main": "out/main/index.js",
+  "desktopName": "talaria.desktop",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "e2e": "npm run build && node tests/e2e/run.cjs",
+    "dist": "npm run build && npm run verify:bundle && electron-builder --config electron-builder.config.cjs",
+    "icons": "node scripts/make-icons.mjs",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
+    "pack": "npm run build && npm run verify:bundle && electron-builder --config electron-builder.config.cjs --dir",
+    "dist:linux": "npm run build && npm run verify:bundle && electron-builder --config electron-builder.config.cjs --linux",
+    "dist:win": "npm run build && npm run verify:bundle && electron-builder --config electron-builder.config.cjs --win",
+    "dist:mac": "npm run build && npm run verify:bundle && electron-builder --config electron-builder.config.cjs --mac"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "highlight.js": "^11.12.0",
+    "playwright-core": "^1.63.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0",
+    "zustand": "^5.0.16"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules
+out
+dist
+release
+*.tmp
+
+# The repo root ignores "build/"; here it holds source assets (icons, entitlements) that packaging needs.
+!build/
