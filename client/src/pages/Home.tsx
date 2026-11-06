@@ -19,6 +19,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
+import { AsciiBackdrop, AsciiFlame } from "@/components/AsciiBackdrop";
 
 const projects = [
   {
@@ -121,81 +122,6 @@ const recognition = [
   { icon: Award, label: "AWARDS", title: "No formal awards listed.", detail: "The strongest proof points are range, steady progression, and work that holds up on site.", state: "NOT LISTED" },
   { icon: Radio, label: "SIGNAL", title: "90 words per minute.", detail: "Fast, clear communication across IT consulting, production, customer care, and field work.", state: "SKILL" },
 ];
-
-function MatrixGlyphs() {
-  const glyphs = ["01", "//", "[]", "<> ", "++", "::", "TX", "AG", "07", "_", "=", "{}"]; 
-  return (
-    <div className="matrix-glyphs" aria-hidden="true">
-      {Array.from({ length: 18 }).map((_, index) => (
-        <div className="glyph-column" key={index} style={{ ["--delay" as string]: `${(index % 7) * -1.2}s`, ["--speed" as string]: `${10 + (index % 5) * 2}s` }}>
-          {Array.from({ length: 9 }).map((__, glyphIndex) => (
-            <span key={glyphIndex}>{glyphs[(index + glyphIndex * 3) % glyphs.length]}</span>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MatrixRain() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-
-    const glyphs = "アカサタナハマヤラワ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<>[]{}";
-    const fontSize = 16;
-    let width = 0;
-    let height = 0;
-    let drops: number[] = [];
-    let frame = 0;
-
-    const resize = () => {
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      width = window.innerWidth;
-      height = window.innerHeight;
-      canvas.width = width * pixelRatio;
-      canvas.height = height * pixelRatio;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-      drops = Array.from({ length: Math.ceil(width / fontSize) }, () => Math.random() * -40);
-      context.fillStyle = "#090b08";
-      context.fillRect(0, 0, width, height);
-    };
-
-    const draw = () => {
-      context.fillStyle = "rgba(9, 11, 8, 0.075)";
-      context.fillRect(0, 0, width, height);
-      context.font = `${fontSize}px "DM Mono", monospace`;
-
-      drops.forEach((drop, column) => {
-        const character = glyphs[Math.floor(Math.random() * glyphs.length)];
-        const x = column * fontSize;
-        const y = drop * fontSize;
-        context.fillStyle = Math.random() > 0.92 ? "rgba(217, 255, 145, 0.68)" : "rgba(184, 242, 58, 0.22)";
-        context.fillText(character, x, y);
-        if (y > height && Math.random() > 0.976) drops[column] = 0;
-        else drops[column] += 0.44 + Math.random() * 0.3;
-      });
-
-      frame = window.requestAnimationFrame(draw);
-    };
-
-    resize();
-    window.addEventListener("resize", resize);
-    frame = window.requestAnimationFrame(draw);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className="matrix-rain" aria-hidden="true" />;
-}
 
 function SectionLabel({ index, children }: { index: string; children: string }) {
   return (
@@ -364,7 +290,7 @@ function Home() {
 
   return (
     <main className="site-shell">
-      <MatrixRain />
+      <AsciiBackdrop />
       <header className="site-header">
         <a className="wordmark" href="#top" onClick={closeMenu} aria-label="AGKBUILDS home">
           <span className="wordmark-cursor" aria-hidden="true">_</span>
@@ -384,9 +310,13 @@ function Home() {
       </header>
 
       <section className="hero" id="top" ref={heroRef}>
-        <MatrixGlyphs />
         <div className="hero-signal" aria-hidden="true" />
         <div className="hero-grid" aria-hidden="true" />
+        <span className="corner-label corner-tl" aria-hidden="true">[ 200 OK ]</span>
+        <span className="corner-label corner-tr" aria-hidden="true">[ SAN ANTONIO ]</span>
+        <span className="crosshair crosshair-a" aria-hidden="true" />
+        <span className="crosshair crosshair-b" aria-hidden="true" />
+        <AsciiFlame className="hero-flame" rows={13} density={0.28} />
         <div className="hero-copy">
           <p className="eyebrow"><span className="eyebrow-prompt">&gt;_</span> owner / IT consultant / san antonio</p>
           <h1>I make the<br /><span className="h1-outline">complicated</span><br /><span className="h1-signal">useful<span className="blink">_</span></span></h1>
@@ -445,7 +375,7 @@ function Home() {
       </section>
 
       <section className="contact section-pad" id="contact">
-        <div className="contact-panel"><MatrixGlyphs /><div className="contact-content"><SectionLabel index="05" children="Contact / open channel" /><h2>Need a fix?<br /><span>Let’s talk.</span></h2><p>For IT consulting, website work, repair, custom applications, or a practical problem that needs a second set of hands.</p><div className="contact-actions"><a className="button button-primary" href="mailto:dylanborgen@gmail.com">dylanborgen@gmail.com <ArrowUpRight size={16} /></a><a className="copy-button" href="tel:+12545892646"><Phone size={15} /> (254) 589-2646</a><button className="copy-button" onClick={copyEmail}>{copied ? <><Check size={15} /> copied</> : <><Copy size={15} /> copy email</>}</button></div></div><div className="contact-side"><span className="contact-side-label">AGKBUILDS / SAN ANTONIO</span><div className="contact-glyph"><Brackets size={45} strokeWidth={1} /></div><span className="contact-side-note">No gatekeepers.<br />Just a clear next step.</span></div></div>
+        <div className="contact-panel"><AsciiFlame className="contact-flame" rows={11} density={0.34} /><div className="contact-content"><SectionLabel index="05" children="Contact / open channel" /><h2>Need a fix?<br /><span>Let’s talk.</span></h2><p>For IT consulting, website work, repair, custom applications, or a practical problem that needs a second set of hands.</p><div className="contact-actions"><a className="button button-primary" href="mailto:dylanborgen@gmail.com">dylanborgen@gmail.com <ArrowUpRight size={16} /></a><a className="copy-button" href="tel:+12545892646"><Phone size={15} /> (254) 589-2646</a><button className="copy-button" onClick={copyEmail}>{copied ? <><Check size={15} /> copied</> : <><Copy size={15} /> copy email</>}</button></div></div><div className="contact-side"><span className="contact-side-label">AGKBUILDS / SAN ANTONIO</span><div className="contact-glyph"><Brackets size={45} strokeWidth={1} /></div><span className="contact-side-note">No gatekeepers.<br />Just a clear next step.</span></div></div>
       </section>
 
       <TerminalEgg />
