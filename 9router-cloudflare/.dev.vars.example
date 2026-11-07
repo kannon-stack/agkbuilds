@@ -1,0 +1,7 @@
+# Copy to .dev.vars for `wrangler dev` (needs Docker). Never commit .dev.vars.
+INITIAL_PASSWORD=change-me
+JWT_SECRET=change-me-long-random
+API_KEY_SECRET=change-me-long-random
+MACHINE_ID_SALT=change-me-long-random
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=

@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nine-router",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-06",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+
+  // One container, built from ./Dockerfile (official decolua/9router image + Litestream).
+  // standard-1 = 4 GiB RAM. 9router is a Next.js app and runs out of memory at 512 MB.
+  "containers": [
+    {
+      "class_name": "NineRouter",
+      "image": "./Dockerfile",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "NINE_ROUTER", "class_name": "NineRouter" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NineRouter"] }],
+
+  // Non-secret settings. Secrets are set with `wrangler secret put` (see README.md).
+  "vars": {
+    "R2_ACCOUNT_ID": "REPLACE_WITH_CLOUDFLARE_ACCOUNT_ID",
+    "R2_BUCKET": "nine-router-data",
+    // Public origin of the Worker (custom domain or *.workers.dev), used for OAuth callbacks.
+    "BASE_URL": "https://nine-router.REPLACE_WITH_WORKERS_SUBDOMAIN.workers.dev"
+  }
+
+  // Optional custom domain:
+  // "routes": [{ "pattern": "router.example.com", "custom_domain": true }]
+}
