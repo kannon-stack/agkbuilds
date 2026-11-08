@@ -139,6 +139,18 @@ export interface McpServerRecord {
 
 // ---------- Settings ----------
 
+/**
+ * settings.json is updated read → modify → write. Two IPC calls in flight at once (e.g. picking a model while a
+ * settings change is saved) would otherwise each read the old file and the later write would silently drop the
+ * other's change. Every writer runs through this queue, one at a time.
+ */
+let settingsQueue: Promise<unknown> = Promise.resolve()
+function lockSettings<T>(fn: () => Promise<T>): Promise<T> {
+  const run = settingsQueue.then(fn, fn)
+  settingsQueue = run.catch(() => {})
+  return run
+}
+
 async function loadSettingsFile(): Promise<SettingsFile> {
   const f = await readJson<Partial<SettingsFile>>(settingsPath())
   const merged: SettingsFile = { ...DEFAULTS, ...(f ?? {}) }
@@ -205,7 +217,9 @@ export async function getProviderRecord(id: string): Promise<ProviderRecord | un
   return f.providers.find((p) => p.id === id) ?? f.providers[0]
 }
 
-export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
+/** Serialized with every other settings write (see lockSettings). */
+export const updateSettings = (patch: SettingsPatch): Promise<Settings> => lockSettings(() => updateSettingsNow(patch))
+async function updateSettingsNow(patch: SettingsPatch): Promise<Settings> {
   const f = await loadSettingsFile()
   const next: SettingsFile = { ...f }
   if (patch.activeProviderId !== undefined && f.providers.some((p) => p.id === patch.activeProviderId)) {
@@ -226,7 +240,9 @@ export async function updateSettings(patch: SettingsPatch): Promise<Settings> {
   return toSettings(next)
 }
 
-export async function saveProvider(input: ProviderInput): Promise<Settings> {
+/** Serialized with every other settings write (see lockSettings). */
+export const saveProvider = (input: ProviderInput): Promise<Settings> => lockSettings(() => saveProviderNow(input))
+async function saveProviderNow(input: ProviderInput): Promise<Settings> {
   const f = await loadSettingsFile()
   const baseUrl = input.baseUrl.trim().replace(/\/+$/, '')
   const existing = input.id ? f.providers.find((p) => p.id === input.id) : undefined
@@ -252,7 +268,9 @@ export async function saveProvider(input: ProviderInput): Promise<Settings> {
   return toSettings(f)
 }
 
-export async function removeProvider(id: string): Promise<Settings> {
+/** Serialized with every other settings write (see lockSettings). */
+export const removeProvider = (id: string): Promise<Settings> => lockSettings(() => removeProviderNow(id))
+async function removeProviderNow(id: string): Promise<Settings> {
   const f = await loadSettingsFile()
   if (f.providers.length > 1) {
     f.providers = f.providers.filter((p) => p.id !== id)
@@ -379,7 +397,9 @@ function applySecrets(target: Record<string, Secret>, set?: Record<string, strin
   }
 }
 
-export async function saveMcpServer(input: McpServerInput): Promise<Settings> {
+/** Serialized with every other settings write (see lockSettings). */
+export const saveMcpServer = (input: McpServerInput): Promise<Settings> => lockSettings(() => saveMcpServerNow(input))
+async function saveMcpServerNow(input: McpServerInput): Promise<Settings> {
   const f = await loadSettingsFile()
   const existing = input.id ? f.mcpServers.find((s) => s.id === input.id) : undefined
   const rec: McpServerRecord = existing ?? {
@@ -416,7 +436,9 @@ export async function saveMcpServer(input: McpServerInput): Promise<Settings> {
   return toSettings(f)
 }
 
-export async function removeMcpServer(id: string): Promise<Settings> {
+/** Serialized with every other settings write (see lockSettings). */
+export const removeMcpServer = (id: string): Promise<Settings> => lockSettings(() => removeMcpServerNow(id))
+async function removeMcpServerNow(id: string): Promise<Settings> {
   const f = await loadSettingsFile()
   f.mcpServers = f.mcpServers.filter((s) => s.id !== id)
   await writeJson(settingsPath(), f)
