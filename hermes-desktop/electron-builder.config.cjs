@@ -8,6 +8,11 @@
  *   Signing: CSC_LINK / CSC_KEY_PASSWORD (macOS+Windows certs); notarization: APPLE_API_KEY(+_ID, _ISSUER) or
  *            APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID. Without them builds are unsigned.
  */
+// CI passes signing secrets as env vars even when they're not configured, i.e. as empty strings. electron-builder treats an
+// empty CSC_LINK as a path (the project dir: "… not a file") and fails the macOS build, so drop empty ones = unsigned build.
+for (const k of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_API_KEY', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
+  if (process.env[k] === '') delete process.env[k]
+}
 const unfused = !!process.env.TALARIA_UNFUSED
 const notarize = !!(process.env.APPLE_API_KEY || process.env.APPLE_TEAM_ID)
 
