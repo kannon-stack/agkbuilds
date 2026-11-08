@@ -29,7 +29,7 @@ services:
     # Loopback only: the tunnel reaches 9router over the compose network,
     # so nothing else on your LAN can hit it directly.
     ports:
-      - "127.0.0.1:20128:20128"
+      - "127.0.0.1:${HOST_PORT:-20128}:20128"
 
   # Named tunnel (stable hostname on a domain in your Cloudflare account).
   cloudflared:
@@ -38,7 +38,9 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+      # Empty by default so plain `docker compose up -d` works; the named-tunnel
+      # profile fails at startup with a clear cloudflared error if it is unset.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       - 9router
 
