@@ -14,7 +14,7 @@ import { mcp } from './mcp/instance'
 import { parseImport } from './mcp/util'
 import { CallbackServer, OAuthStore } from './mcp/oauth'
 import { OAUTH_REDIRECT_PORT } from '../shared/mcp'
-import { resolveAppearance } from '../shared/theme'
+import { resolveAppearance, titleBarOverlay } from '../shared/theme'
 import { initServices, services } from './services'
 import { MemoryError } from './memory'
 import { SkillError, summarize, withEnabled } from './skills/registry'
@@ -30,10 +30,33 @@ function iconPath(): string | undefined {
   return existsSync(p) ? p : undefined
 }
 
-/** Window background matching the active theme (so resize/overscroll never flashes the wrong colour). */
-async function themeBackground(): Promise<string> {
+const IS_MAC = process.platform === 'darwin'
+/** Height of the app-drawn title bar (keep in sync with --titlebar-h in styles.css). */
+const TITLEBAR_H = 42
+
+/** Active theme colours as the main process sees them (OS dark/light preference included). */
+async function themeColors() {
   const s = await store.getSettings()
-  return resolveAppearance(s.theme, s.appearance, nativeTheme.shouldUseDarkColors).colors.bg
+  return resolveAppearance(s.theme, s.appearance, nativeTheme.shouldUseDarkColors).colors
+}
+
+/**
+ * Keep the native parts of the window in step with the theme: the background shown while
+ * resizing, and (Windows/Linux) the minimise/maximise/close buttons drawn over our title bar.
+ */
+async function applyChrome(): Promise<void> {
+  const c = await themeColors()
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue
+    w.setBackgroundColor(c.bg)
+    if (!IS_MAC) {
+      try {
+        w.setTitleBarOverlay({ ...titleBarOverlay(c), height: TITLEBAR_H })
+      } catch {
+        /* overlay not enabled on this window */
+      }
+    }
+  }
 }
 
 async function createWindow(): Promise<BrowserWindow> {
@@ -43,9 +66,15 @@ async function createWindow(): Promise<BrowserWindow> {
     minWidth: 720,
     minHeight: 480,
     title: APP_NAME,
-    backgroundColor: await themeBackground(),
+    backgroundColor: (await themeColors()).bg,
     icon: iconPath(),
     autoHideMenuBar: true,
+    // The renderer draws its own title bar (sidebar toggle, model picker, chat title). macOS keeps
+    // its traffic lights inset on the left; Windows/Linux get native window controls on the right.
+    titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
+    ...(IS_MAC
+      ? { trafficLightPosition: { x: 14, y: 14 } }
+      : { titleBarOverlay: { ...titleBarOverlay(await themeColors()), height: TITLEBAR_H } }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -227,8 +256,7 @@ function registerIpc() {
   h('settings:update', async (_e, patch) => {
     const s = await store.updateSettings(patch)
     nativeTheme.themeSource = s.theme
-    const bg = resolveAppearance(s.theme, s.appearance, nativeTheme.shouldUseDarkColors).colors.bg
-    BrowserWindow.getAllWindows().forEach((w) => !w.isDestroyed() && w.setBackgroundColor(bg))
+    await applyChrome()
     return s
   })
   h('settings:saveProvider', (_e, input) => store.saveProvider(input))
@@ -348,6 +376,8 @@ if (!app.requestSingleInstanceLock()) {
     await store.pruneEmptyConversations()
     void pruneAttachments()
     nativeTheme.themeSource = (await store.getSettings()).theme
+    // In "System" mode the OS can flip dark/light at any time: follow it with the window chrome too.
+    nativeTheme.on('updated', () => void applyChrome())
     registerIpc()
     // OAuth for remote MCP servers: tokens live encrypted in userData; the browser is the system browser.
     const oauthStore = new OAuthStore(path.join(app.getPath('userData'), 'mcp-oauth.json'), { encrypt: store.encryptSecret, decrypt: store.decryptSecret })

@@ -41,3 +41,21 @@ describe('settings writes', () => {
     expect((await good).temperature).toBe(0.4)
   })
 })
+
+describe('user name and appearance settings', () => {
+  it('defaults to no name, cleans what is saved, and keeps it across reads', async () => {
+    expect((await store.getSettings()).userName).toBe('')
+    const s = await store.updateSettings({ userName: '  Dylan\n ' })
+    expect(s.userName).toBe('Dylan')
+    expect((await store.getSettings()).userName).toBe('Dylan')
+    expect((await store.updateSettings({ userName: 'x'.repeat(99) })).userName).toHaveLength(40)
+    expect((await store.updateSettings({ temperature: 0.5 })).userName).toHaveLength(40) // other writes leave it alone
+  })
+  it('glass and the modern font are the defaults and persist when changed', async () => {
+    const a = (await store.getSettings()).appearance
+    expect(a.glass).toBe(true)
+    expect(a.uiFont).toBe('modern')
+    expect((await store.updateSettings({ appearance: { glass: false } })).appearance.glass).toBe(false)
+    expect((await store.getSettings()).appearance.glass).toBe(false)
+  })
+})

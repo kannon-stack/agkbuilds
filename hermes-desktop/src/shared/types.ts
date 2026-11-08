@@ -169,6 +169,8 @@ export interface Settings {
   skills: SkillsSettings
   context: ContextSettings
   titles: TitleSettings
+  /** What the app calls you on the new-chat screen; '' = no name. */
+  userName: string
 }
 
 export interface MemorySettings {

@@ -104,7 +104,7 @@ describe('sanitizeAppearance (untrusted input)', () => {
   })
   it('rejects bad values and keeps the previous ones', () => {
     const r = sanitizeAppearance({ darkTheme: 'sky', lightTheme: 'forest', accent: 'red', radius: 'huge' as any, chatWidth: 'x' as any, uiFont: 'comic' as any }, { ...prev, accent: '#112233' })
-    expect(r).toMatchObject({ darkTheme: DEFAULT_DARK, lightTheme: DEFAULT_LIGHT, accent: '#112233', radius: 'default', chatWidth: 'default', uiFont: 'system' })
+    expect(r).toMatchObject({ darkTheme: DEFAULT_DARK, lightTheme: DEFAULT_LIGHT, accent: '#112233', radius: 'default', chatWidth: 'default', uiFont: 'modern' })
   })
   it('clamps the font scale and ignores non-numbers', () => {
     expect(sanitizeAppearance({ fontScale: 9 }, prev).fontScale).toBe(FONT_SCALE_MAX)

@@ -4,9 +4,10 @@ import { useStore } from './store'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { SettingsModal } from './components/SettingsModal'
+import { TitleBar } from './components/TitleBar'
 
 export default function App() {
-  const { ready, init, settings, settingsOpen, toast, newChat, openSettings, previewTheme } = useStore()
+  const { ready, init, settings, settingsOpen, toast, newChat, openSettings, previewTheme, sidebarCollapsed, toggleSidebar } = useStore()
   const revealed = useRef(false)
 
   useEffect(() => {
@@ -34,16 +35,21 @@ export default function App() {
       if (!(e.ctrlKey || e.metaKey)) return
       if (e.key.toLowerCase() === 'n') { e.preventDefault(); void newChat() }
       if (e.key === ',') { e.preventDefault(); openSettings(true) }
+      if (e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) { e.preventDefault(); toggleSidebar() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newChat, openSettings])
+  }, [newChat, openSettings, toggleSidebar])
 
   if (!ready) return <div className="boot" />
   return (
-    <div className="app">
-      <Sidebar />
-      <ChatView />
+    <div className={`app ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <TitleBar />
+      {/* The chat stays mounted under Settings so a half-written message survives a trip there. */}
+      <div className="workspace" hidden={settingsOpen}>
+        <Sidebar />
+        <ChatView />
+      </div>
       {settingsOpen && <SettingsModal />}
       {toast && <div className="toast" role="alert">{toast}</div>}
     </div>

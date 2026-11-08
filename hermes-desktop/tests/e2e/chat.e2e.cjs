@@ -96,7 +96,7 @@ const check = (cond, msg) => { if (!cond) { console.error('✗ FAIL:', msg); pro
 
   // Settings: save a key, ensure renderer never gets it back, and it is sent as Bearer
   await win.keyboard.press('Control+,')
-  await win.waitForSelector('.modal')
+  await win.waitForSelector('.settings-page')
   await win.fill('.provider-form input[type=password]', 'sk-secret-123')
   await win.click('button:has-text("Test connection")')
   await win.waitForSelector('.status.ok')
