@@ -2,6 +2,7 @@ import { memo, useState, type ReactElement, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
+import { Icon } from './Icons'
 
 function textOf(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return ''
@@ -24,7 +25,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       <div className="codeblock-bar">
         <span>{lang}</span>
         <button onClick={copy} className="link-btn">
-          {copied ? 'Copied' : 'Copy'}
+          <Icon name={copied ? 'check' : 'copy'} size={13} /> {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
       <pre>{children}</pre>

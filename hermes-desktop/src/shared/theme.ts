@@ -148,7 +148,7 @@ export function bestInk(bg: string): string {
 
 // ---------------------------------------------------------------- appearance settings
 
-export type UiFontKey = 'system' | 'humanist' | 'serif' | 'rounded' | 'custom'
+export type UiFontKey = 'modern' | 'system' | 'humanist' | 'serif' | 'rounded' | 'custom'
 export type MonoFontKey = 'system' | 'custom'
 export type RadiusKey = 'sharp' | 'default' | 'round'
 export type WidthKey = 'narrow' | 'default' | 'wide' | 'full'
@@ -166,13 +166,15 @@ export interface Appearance {
   fontScale: number
   radius: RadiusKey
   chatWidth: WidthKey
+  /** Frosted, translucent panels over a soft accent glow. Off = solid surfaces (always off for high-contrast themes). */
+  glass: boolean
   customThemes: CustomTheme[]
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
   lightTheme: DEFAULT_LIGHT, darkTheme: DEFAULT_DARK, accent: null,
-  uiFont: 'system', uiFontCustom: '', monoFont: 'system', monoFontCustom: '',
-  fontScale: 1, radius: 'default', chatWidth: 'default', customThemes: []
+  uiFont: 'modern', uiFontCustom: '', monoFont: 'system', monoFontCustom: '',
+  fontScale: 1, radius: 'default', chatWidth: 'default', glass: true, customThemes: []
 }
 
 export const FONT_SCALE_MIN = 0.85
@@ -180,6 +182,8 @@ export const FONT_SCALE_MAX = 1.35
 export const MAX_CUSTOM_THEMES = 30
 
 export const UI_FONT_STACKS: Record<Exclude<UiFontKey, 'custom'>, { label: string; stack: string }> = {
+  // Bundled with the app (OFL), so it looks the same on every OS and works offline.
+  modern: { label: 'Modern (Plus Jakarta Sans)', stack: "'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   system: { label: 'System default', stack: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" },
   humanist: { label: 'Humanist', stack: "Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif" },
   serif: { label: 'Serif', stack: "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, 'Times New Roman', serif" },
@@ -257,6 +261,7 @@ export function sanitizeAppearance(patch: Partial<Appearance> | undefined, prev:
   if (typeof patch.fontScale === 'number' && isFinite(patch.fontScale)) out.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, Math.round(patch.fontScale * 100) / 100))
   if (patch.radius && patch.radius in RADIUS) out.radius = patch.radius
   if (patch.chatWidth && patch.chatWidth in CHAT_WIDTH) out.chatWidth = patch.chatWidth
+  if (typeof patch.glass === 'boolean') out.glass = patch.glass
   return out
 }
 
@@ -270,6 +275,8 @@ export interface Resolved {
   colors: ThemeColors
   /** CSS custom properties to set on :root. */
   vars: Record<string, string>
+  /** Whether translucent "glass" panels are drawn (setting on and the theme isn't high-contrast). */
+  glass: boolean
 }
 
 /**
@@ -297,7 +304,18 @@ export function resolveAppearance(mode: Mode, a: Appearance, prefersDark: boolea
   vars['--radius'] = RADIUS[a.radius].r
   vars['--radius-lg'] = RADIUS[a.radius].lg
   vars['--thread-w'] = CHAT_WIDTH[a.chatWidth].w
-  return { base, theme, colors, vars }
+  return { base, theme, colors, vars, glass: a.glass && !isHighContrast(theme) }
+}
+
+/** High-contrast themes keep solid surfaces: translucency would undercut the contrast they promise. */
+export const isHighContrast = (t: Pick<ThemeDef, 'id'>): boolean => t.id.startsWith('contrast-')
+
+/**
+ * Colours for the OS window controls drawn over the app's own title bar (Windows/Linux).
+ * The bar sits on the window background, so the controls match it; symbols use the text colour.
+ */
+export function titleBarOverlay(c: Pick<ThemeColors, 'bg' | 'text'>): { color: string; symbolColor: string } {
+  return { color: c.bg, symbolColor: c.text }
 }
 
 // ---------------------------------------------------------------- import / export

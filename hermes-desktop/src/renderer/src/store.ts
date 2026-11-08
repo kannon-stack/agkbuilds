@@ -37,6 +37,10 @@ interface State {
   compacting: Record<string, boolean>
   /** Message to scroll to and flash (set by search results). */
   focusId: string | null
+  /** Text a starter chip asks the composer to take (n changes on every request). */
+  draft: { text: string; n: number } | null
+  /** History sidebar hidden (Ctrl+B); remembered on this computer. */
+  sidebarCollapsed: boolean
 
   init(): Promise<void>
   refreshList(): Promise<void>
@@ -64,6 +68,9 @@ interface State {
   applyEvent(e: ChatEvent): void
   setSettings(s: Settings): void
   openSettings(open: boolean, tab?: SettingsTab): void
+  /** Put text into the composer (and focus it) without sending. */
+  prefill(text: string): void
+  toggleSidebar(collapsed?: boolean): void
   refreshMemory(): Promise<void>
   refreshSkills(): Promise<void>
   refreshSettings(): Promise<void>
@@ -76,6 +83,16 @@ interface State {
 }
 
 export type SettingsTab = 'providers' | 'general' | 'tools' | 'mcp' | 'appearance' | 'memory' | 'skills'
+
+const SIDEBAR_KEY = 'talaria.sidebarCollapsed'
+const readCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+let draftSeq = 0
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 let appearanceTimer: ReturnType<typeof setTimeout> | undefined
@@ -98,6 +115,8 @@ export const useStore = create<State>((set, get) => ({
   toast: null,
   compacting: {},
   focusId: null,
+  draft: null,
+  sidebarCollapsed: readCollapsed(),
 
   async init() {
     const api = window.api
@@ -393,6 +412,18 @@ export const useStore = create<State>((set, get) => ({
   },
   openSettings(open, tab) {
     set((s) => ({ settingsOpen: open, settingsTab: tab ?? s.settingsTab }))
+  },
+  prefill(text) {
+    set({ draft: { text, n: ++draftSeq } })
+  },
+  toggleSidebar(collapsed) {
+    const next = collapsed ?? !get().sidebarCollapsed
+    try {
+      localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0')
+    } catch {
+      /* storage unavailable: keep it for this session only */
+    }
+    set({ sidebarCollapsed: next })
   },
   showToast(msg) {
     clearTimeout(toastTimer)

@@ -7,15 +7,29 @@ import { AppearanceSettings } from './AppearanceSettings'
 import { MemorySettings } from './MemorySettings'
 import { SkillsSettings } from './SkillsSettings'
 import { TOOL_META, type ToolPolicy } from '../../../shared/toolMeta'
+import { MAX_USER_NAME } from '../../../shared/greeting'
+import { Icon, type IconName } from './Icons'
 
 type Tab = 'general' | 'providers' | 'tools' | 'mcp' | 'appearance' | 'memory' | 'skills'
 
+const SECTIONS: { id: Tab; label: string; icon: IconName; blurb: string }[] = [
+  { id: 'providers', label: 'Providers', icon: 'server', blurb: 'The services Talaria uses to reach models.' },
+  { id: 'tools', label: 'Tools', icon: 'tools', blurb: 'What the model may do on your computer, and where.' },
+  { id: 'memory', label: 'Memory', icon: 'memory', blurb: 'Notes the model remembers between chats.' },
+  { id: 'skills', label: 'Skills', icon: 'book', blurb: 'Reusable instructions you can run with /name.' },
+  { id: 'mcp', label: 'MCP servers', icon: 'plug', blurb: 'Connect extra tools from MCP servers.' },
+  { id: 'appearance', label: 'Appearance', icon: 'drop', blurb: 'Themes, colours, fonts and layout.' },
+  { id: 'general', label: 'General', icon: 'sliders', blurb: 'Your name, the system prompt, chat titles and context.' }
+]
+
+/** Full-page settings: a section menu in the sidebar's place and one section at a time. */
 export function SettingsModal() {
   const { settings, setSettings, openSettings, loadModels, settingsTab } = useStore()
   const [tab, setTab] = useState<Tab>(settingsTab)
+  useEffect(() => setTab(settingsTab), [settingsTab])
 
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && openSettings(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.overlay') && openSettings(false)
     document.addEventListener('keydown', esc)
     return () => document.removeEventListener('keydown', esc)
   }, [openSettings])
@@ -25,42 +39,46 @@ export function SettingsModal() {
     openSettings(false)
     void loadModels()
   }
+  const section = SECTIONS.find((x) => x.id === tab)!
 
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="modal" role="dialog" aria-modal aria-label="Settings">
-        <div className="modal-head">
-          <h2>Settings</h2>
-          <button className="icon-btn" onClick={close} aria-label="Close settings">
-            ✕
+    <section className="settings-page" aria-label="Settings">
+      <nav className="settings-menu tabs" aria-label="Settings sections">
+        <button className="settings-back" onClick={close} aria-label="Close settings">
+          <Icon name="back" size={16} /> Back to chat
+        </button>
+        {SECTIONS.map((x) => (
+          <button key={x.id} className={tab === x.id ? 'on' : ''} aria-current={tab === x.id ? 'page' : undefined} onClick={() => setTab(x.id)}>
+            <Icon name={x.icon} size={17} /> {x.label}
           </button>
-        </div>
-        <div className="tabs">
-          {(['providers', 'tools', 'memory', 'skills', 'mcp', 'appearance', 'general'] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'tools' ? 'Tools' : t === 'mcp' ? 'MCP' : t === 'appearance' ? 'Appearance' : t === 'memory' ? 'Memory' : t === 'skills' ? 'Skills' : 'Providers'}
-            </button>
-          ))}
-        </div>
-        <div className="modal-body">
-          {tab === 'general' ? (
-            <General />
-          ) : tab === 'tools' ? (
-            <Tools />
-          ) : tab === 'mcp' ? (
-            <McpSettings />
-          ) : tab === 'appearance' ? (
-            <AppearanceSettings />
-          ) : tab === 'memory' ? (
-            <MemorySettings />
-          ) : tab === 'skills' ? (
-            <SkillsSettings />
-          ) : (
-            <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
-          )}
+        ))}
+      </nav>
+      <div className="settings-body">
+        <div className="settings-col">
+          <header className="settings-head">
+            <h2>{section.label}</h2>
+            <p>{section.blurb}</p>
+          </header>
+          <div className="settings-card">
+            {tab === 'general' ? (
+              <General />
+            ) : tab === 'tools' ? (
+              <Tools />
+            ) : tab === 'mcp' ? (
+              <McpSettings />
+            ) : tab === 'appearance' ? (
+              <AppearanceSettings />
+            ) : tab === 'memory' ? (
+              <MemorySettings />
+            ) : tab === 'skills' ? (
+              <SkillsSettings />
+            ) : (
+              <Providers providers={settings.providers} activeId={settings.activeProviderId} onChange={setSettings} />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -155,6 +173,7 @@ function About() {
 
 function General() {
   const { settings, setSettings } = useStore()
+  const [name, setName] = useState(settings!.userName)
   const [prompt, setPrompt] = useState(settings!.systemPrompt)
   const [temp, setTemp] = useState(settings!.temperature)
   const update = async (patch: Parameters<typeof window.api.settings.update>[0]) =>
@@ -162,6 +181,11 @@ function General() {
 
   return (
     <div className="form">
+      <label>
+        What should Talaria call you?
+        <input value={name} maxLength={MAX_USER_NAME} placeholder="Your first name" onChange={(e) => setName(e.target.value)} onBlur={() => update({ userName: name })} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+        <span className="hint">Used in the greeting on new chats. It stays on this computer and is not sent to the model.</span>
+      </label>
       <label>
         System prompt
         <textarea rows={5} value={prompt} onChange={(e) => setPrompt(e.target.value)} onBlur={() => update({ systemPrompt: prompt })} />

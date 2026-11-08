@@ -39,6 +39,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
     "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",

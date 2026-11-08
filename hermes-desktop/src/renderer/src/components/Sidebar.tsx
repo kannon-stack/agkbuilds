@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { MOD } from '../platform'
-import { APP_NAME, type ConversationSummary } from '../../../shared/types'
+import type { ConversationSummary } from '../../../shared/types'
 import type { SearchResult, SnippetPart } from '../../../shared/search'
+import { initial } from '../../../shared/greeting'
+import { Icon } from './Icons'
 
 function bucket(ts: number): string {
   const day = 86_400_000
@@ -22,8 +24,26 @@ function Marked({ parts }: { parts: SnippetPart[] }) {
 }
 
 export function Sidebar() {
-  const { conversations, active, generating, newChat, select, remove, rename, reveal, openSettings } = useStore()
+  const { conversations, active, generating, newChat, select, remove, rename, reveal, openSettings, settings, sidebarCollapsed } = useStore()
   const [q, setQ] = useState('')
+  const searchBox = useRef<HTMLInputElement>(null)
+  const name = settings?.userName ?? ''
+
+  // Ctrl/⌘+K jumps to search (opening the sidebar first if it is hidden).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        useStore.getState().toggleSidebar(false)
+        requestAnimationFrame(() => {
+          searchBox.current?.focus()
+          searchBox.current?.select()
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
 
@@ -66,16 +86,29 @@ export function Sidebar() {
     setEditing(null)
   }
 
+  const startRename = (c: ConversationSummary) => {
+    setEditing(c.id)
+    setDraft(c.title)
+  }
+
   return (
-    <aside className="sidebar">
-      <div className="brand">
-        <span className="brand-mark">✦</span> {APP_NAME}
-      </div>
+    <aside className="sidebar" aria-hidden={sidebarCollapsed} inert={sidebarCollapsed}>
       <button className="btn new" onClick={newChat}>
-        <span>＋ New chat</span>
+        <Icon name="pencil" size={17} />
+        <span>New chat</span>
         <kbd>{MOD} N</kbd>
       </button>
-      <input className="search" placeholder="Search all messages" aria-label="Search chats" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+      <label className="search-box">
+        <Icon name="search" size={15} />
+        <input ref={searchBox} className="search" placeholder="Search chats" aria-label="Search chats" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+        {q ? (
+          <button className="search-clear" aria-label="Clear search" onClick={() => setQ('')}>
+            <Icon name="x" size={13} />
+          </button>
+        ) : (
+          <kbd>{MOD} K</kbd>
+        )}
+      </label>
       <nav className="convlist">
         {needle && (
           <div className="results" aria-label="Search results">
@@ -105,10 +138,7 @@ export function Sidebar() {
                 key={c.id}
                 className={`conv ${active?.id === c.id ? 'active' : ''}`}
                 onClick={() => select(c.id)}
-                onDoubleClick={() => {
-                  setEditing(c.id)
-                  setDraft(c.title)
-                }}
+                onDoubleClick={() => startRename(c)}
               >
                 {editing === c.id ? (
                   <input
@@ -127,17 +157,30 @@ export function Sidebar() {
                   <>
                     <span className="conv-title">{c.title}</span>
                     {generating[c.id] && <span className="dot" title="Generating" />}
-                    <button
-                      className="conv-del"
-                      title="Delete chat"
-                      aria-label={`Delete ${c.title}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (confirm(`Delete “${c.title}”?`)) void remove(c.id)
-                      }}
-                    >
-                      ✕
-                    </button>
+                    <span className="conv-acts">
+                      <button
+                        className="conv-act"
+                        title="Rename"
+                        aria-label={`Rename ${c.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          startRename(c)
+                        }}
+                      >
+                        <Icon name="edit" size={14} />
+                      </button>
+                      <button
+                        className="conv-act conv-del"
+                        title="Delete chat"
+                        aria-label={`Delete ${c.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(`Delete “${c.title}”?`)) void remove(c.id)
+                        }}
+                      >
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </span>
                   </>
                 )}
               </div>
@@ -146,9 +189,15 @@ export function Sidebar() {
         ))}
         {!needle && !groups.length && <p className="muted pad">No chats yet.</p>}
       </nav>
-      <button className="btn ghost settings-btn" onClick={() => openSettings(true)}>
-        ⚙ Settings <kbd>{MOD} ,</kbd>
-      </button>
+      <div className="me">
+        <span className="me-avatar" aria-hidden>{initial(name)}</span>
+        <button className="me-name" onClick={() => openSettings(true, 'general')} title="Change the name Talaria calls you (Settings → General)">
+          {name || 'Add your name'}
+        </button>
+        <button className="tb-btn settings-btn" onClick={() => openSettings(true)} aria-label="Settings" title={`Settings (${MOD} ,)`}>
+          <Icon name="gear" />
+        </button>
+      </div>
     </aside>
   )
 }

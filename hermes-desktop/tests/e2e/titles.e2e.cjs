@@ -112,7 +112,7 @@ const check = (c, m) => { if (!c) { console.error('✗ FAIL:', m); process.exitC
 
   // 8. Settings UI
   await win.reload(); await win.waitForSelector('.composer textarea')
-  await win.keyboard.press('Control+,'); await win.waitForSelector('.modal, [role=dialog]')
+  await win.keyboard.press('Control+,'); await win.waitForSelector('.settings-page')
   await win.click('text=General'); await win.waitForSelector('text=Chat titles')
   check(!(await win.$$eval('label.check input[type=checkbox]', e => e.map(x => x.checked))).slice(0,1)[0], 'settings toggle reflects disabled')
   await win.click('text=Let the model name new chats'); await win.waitForTimeout(400)
