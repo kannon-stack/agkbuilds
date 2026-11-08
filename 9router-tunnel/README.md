@@ -1,6 +1,7 @@
 # 9router on your machine + free Cloudflare Tunnel
 
-The free alternative to `../9router-cloudflare` (which needs the Workers Paid plan).
+A free way to host 9router publicly. (Cloudflare Containers was considered and dropped: it needs
+the Workers Paid plan and an R2 + Litestream setup to persist the database.)
 9router runs in Docker on a machine you control; `cloudflared` makes an outbound-only
 connection to Cloudflare and gives it a public HTTPS URL. No inbound ports, no port forwarding.
 
@@ -8,7 +9,7 @@ connection to Cloudflare and gives it a public HTTPS URL. No inbound ports, no p
 CLI tools / browser ──▶ Cloudflare edge ──▶ cloudflared ──▶ 9router :20128 ──▶ volume (SQLite)
 ```
 
-The SQLite DB sits on a normal Docker volume, so none of the Litestream/R2 machinery is needed.
+The SQLite DB sits on a normal Docker volume, so no external backup service is needed.
 The trade-off: the URL only works while this machine and Docker are running.
 
 ## Prerequisites
