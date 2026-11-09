@@ -89,9 +89,9 @@ const toolNames = (b) => (b.tools ?? []).map(t => t.function.name)
 
   // import via UI
   await openMcp(); await win.click('button:has-text("Import JSON")')
-  await win.fill('.modal textarea', JSON.stringify({ mcpServers: { Imported: { command: process.execPath, args: [FIXTURE], env: { K: 'v' } }, Bad: { nothing: 1 } } }))
+  await win.fill('.settings-page textarea', JSON.stringify({ mcpServers: { Imported: { command: process.execPath, args: [FIXTURE], env: { K: 'v' } }, Bad: { nothing: 1 } } }))
   await win.click('button:has-text("Review")'); await win.waitForSelector('.mcp-preview')
-  check((await win.textContent('.modal-body')).includes('1 server will be added') && (await win.textContent('.modal-body')).includes('"Bad": needs a "command"'), 'UI: import preview lists valid server and per-entry error')
+  check((await win.textContent('.settings-body')).includes('1 server will be added') && (await win.textContent('.settings-body')).includes('"Bad": needs a "command"'), 'UI: import preview lists valid server and per-entry error')
   await win.screenshot({ path: path.join(SHOTS, '15-mcp-import.png') })
   await win.click('button:has-text("Add & connect")')
   await win.waitForSelector('.mcp-server:has-text("Imported"):has-text("Connected")', { timeout: 15000 })
@@ -106,7 +106,7 @@ const toolNames = (b) => (b.tools ?? []).map(t => t.function.name)
 
   // add via form (http transport validation)
   await openMcp(); await win.click('button:has-text("Add server")')
-  await win.selectOption('.modal select >> nth=0', 'http'); await win.fill('input[placeholder="https://example.com/mcp"]', 'ftp://nope'); await win.click('button:has-text("Add server") >> nth=-1')
+  await win.selectOption('.settings-page select >> nth=0', 'http'); await win.fill('input[placeholder="https://example.com/mcp"]', 'ftp://nope'); await win.click('button:has-text("Add server") >> nth=-1')
   check(await win.$('.status.bad:has-text("valid http")') !== null, 'UI: form rejects non-http URL')
   await win.screenshot({ path: path.join(SHOTS, '16-mcp-form.png') })
 

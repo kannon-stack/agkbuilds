@@ -4,6 +4,7 @@ import type { SiblingInfo } from '../../../shared/tree'
 import { Markdown } from './Markdown'
 import { ToolCallCard } from './ToolCallCard'
 import { Thumbs } from './Thumbs'
+import { Icon, Mark } from './Icons'
 
 interface Props {
   message: Message
@@ -109,7 +110,7 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, co
     return (
       <div className="msg msg-user">
         <div className={`bubble-col ${editing ? 'editing' : ''}`} data-message-id={message.id}>
-          {message.skill && <span className="skill-chip" title="This message invoked a skill">⚡ {message.skill.name}</span>}
+          {message.skill && <span className="skill-chip" title="This message invoked a skill"><Icon name="skill" size={12} /> {message.skill.name}</span>}
           {message.attachments && <Thumbs items={message.attachments} />}
           {editing ? (
             <Editor
@@ -128,10 +129,10 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, co
             <div className={`msg-actions user-actions ${siblings.count > 1 ? 'pinned' : ''}`}>
               <BranchNav info={siblings} id={message.id} disabled={busy} onSwitch={onSwitch} />
               <button className="link-btn" disabled={busy} onClick={copy}>
-                {copied ? 'Copied' : 'Copy'}
+                <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy'}
               </button>
               <button className="link-btn" disabled={busy} onClick={() => setEditing(true)}>
-                Edit
+                <Icon name="edit" size={14} /> Edit
               </button>
             </div>
           )}
@@ -146,7 +147,7 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, co
   return (
     <div className={`msg msg-assistant ${continuation ? 'cont' : ''}`} data-message-id={message.id}>
       <div className="avatar" aria-hidden style={continuation ? { visibility: 'hidden' } : undefined}>
-        ✦
+        <Mark size={13} />
       </div>
       <div className="msg-body">
         {!continuation && <div className="msg-meta">{message.model || 'Assistant'}</div>}
@@ -185,13 +186,13 @@ export function MessageItem({ message, streaming, isLast, continuation, busy, co
             <BranchNav info={siblings} id={message.id} disabled={busy} onSwitch={onSwitch} />
             {message.content && (
               <button className="link-btn" onClick={copy}>
-                {copied ? 'Copied' : 'Copy'}
+                <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy'}
               </button>
             )}
             {message.usage && <Usage u={message.usage} />}
             {isLast && (
               <button className="link-btn" onClick={onRegenerate}>
-                {message.error ? 'Retry' : 'Regenerate'}
+                <Icon name="redo" size={14} /> {message.error ? 'Retry' : 'Regenerate'}
               </button>
             )}
           </div>

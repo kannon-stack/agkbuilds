@@ -133,7 +133,7 @@ export interface ProviderRecord {
   kind: ProviderKind
   /** Claude-specific settings (kind === 'anthropic'). */
   options?: AnthropicOptions
-  /** OpenAI-compatible base URL, e.g. http://localhost:20128/v1 */
+  /** OpenAI-compatible base URL, e.g. http://127.0.0.1:20128/v1 */
   baseUrl: string
   defaultModel: string
   /** Encrypted (safeStorage) or plain API key, main process only. */
@@ -169,6 +169,8 @@ export interface Settings {
   skills: SkillsSettings
   context: ContextSettings
   titles: TitleSettings
+  /** What the app calls you on the new-chat screen; '' = no name. */
+  userName: string
 }
 
 export interface MemorySettings {

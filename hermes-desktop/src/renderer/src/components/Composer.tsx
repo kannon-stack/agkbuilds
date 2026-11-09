@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ModelPicker } from './ModelPicker'
+import { Icon } from './Icons'
 import { useStore } from '../store'
 import { applicableMemories } from '../../../shared/memory'
 import { MAX_ATTACHMENTS_PER_MESSAGE, IMAGE_MIMES } from '../../../shared/attachments'
@@ -11,6 +11,8 @@ import { ContextMeter } from './ContextMeter'
 interface Props {
   generating: boolean
   disabled: boolean
+  /** New chat: the composer sits centred under the greeting. */
+  empty?: boolean
   onSend(text: string, attachments?: Attachment[]): void
   onStop(): void
 }
@@ -23,20 +25,31 @@ interface Command {
   runsAlone?: boolean
 }
 
-export function Composer({ generating, disabled, onSend, onStop }: Props) {
+export function Composer({ generating, disabled, empty, onSend, onStop }: Props) {
   const [text, setText] = useState('')
   const [sel, setSel] = useState(0)
   const [dismissed, setDismissed] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
-  const { settings, skills, memory, openSettings, refreshMemory, showToast, compact, compacting, active } = useStore()
+  const { settings, skills, memory, openSettings, refreshMemory, showToast, compact, compacting, active, draft } = useStore()
   const summarizing = !!active && !!compacting[active.id]
   const tools = settings?.tools
   const memoryOn = !!settings?.memory.enabled
   const folder = tools?.workspace.split(/[\\/]/).filter(Boolean).pop()
   const noteCount = useMemo(() => (memoryOn ? applicableMemories(memory, tools?.workspace ?? '').length : 0), [memory, memoryOn, tools?.workspace])
   const skillCount = settings?.skills.enabled ? skills.filter((s) => s.enabled).length : 0
+
+  // A starter chip on the new-chat screen fills the box (it never sends by itself).
+  useEffect(() => {
+    if (!draft) return
+    setText(draft.text)
+    const el = ref.current
+    if (el) {
+      el.focus()
+      requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length))
+    }
+  }, [draft?.n])
 
   // Auto-grow up to ~40% of the viewport.
   useEffect(() => {
@@ -152,7 +165,8 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
           rows={1}
           value={text}
           autoFocus
-          placeholder="Message… (Enter to send, Shift+Enter for a new line, / for commands)"
+          placeholder={empty ? 'Ask Talaria anything…' : 'Reply…'}
+          title="Enter to send · Shift+Enter for a new line · / for commands"
           onChange={(e) => setText(e.target.value)}
           onPaste={(e) => {
             const imgs = imagesIn(e.clipboardData.files)
@@ -179,38 +193,40 @@ export function Composer({ generating, disabled, onSend, onStop }: Props) {
         />
         <div className="composer-row">
           <div className="composer-left">
-            <button className="attach-btn" onClick={() => void pick()} title="Attach images (or paste / drop them)" aria-label="Attach images" disabled={files.length >= MAX_ATTACHMENTS_PER_MESSAGE}>
-              📎
+            <button className="attach-btn tb-btn" onClick={() => void pick()} title="Attach images (or paste / drop them)" aria-label="Attach images" disabled={files.length >= MAX_ATTACHMENTS_PER_MESSAGE}>
+              <Icon name="clip" />
             </button>
-            <ModelPicker />
             <button
               className={`chip ${tools?.enabled ? 'on' : ''}`}
+              data-kind="tools"
               onClick={() => openSettings(true, 'tools')}
               title={tools?.enabled ? `Tools enabled. Workspace: ${tools.workspace || 'none chosen'}` : 'Tools are off'}
             >
-              🛠 {tools?.enabled ? (folder ?? 'no folder') : 'Tools off'}
+              <Icon name={tools?.enabled ? 'folder' : 'tools'} size={15} /> {tools?.enabled ? (folder ?? 'No folder') : 'Tools off'}
             </button>
             {memoryOn && (
-              <button className="chip on" onClick={() => openSettings(true, 'memory')} title={`${noteCount} memory note${noteCount === 1 ? '' : 's'} shared with the model in this chat`}>
-                🧠 {noteCount}
+              <button className="chip on" data-kind="memory" onClick={() => openSettings(true, 'memory')} title={`${noteCount} memory note${noteCount === 1 ? '' : 's'} shared with the model in this chat`} aria-label={`Memory: ${noteCount} note${noteCount === 1 ? '' : 's'}`}>
+                <Icon name="memory" size={15} /> {noteCount}
               </button>
             )}
-            <ContextMeter busy={generating || summarizing} />
             {skillCount > 0 && (
-              <button className="chip on" onClick={() => openSettings(true, 'skills')} title={`${skillCount} skill${skillCount === 1 ? '' : 's'} available — type / to use one`}>
-                ⚡ {skillCount}
+              <button className="chip on" data-kind="skills" onClick={() => openSettings(true, 'skills')} title={`${skillCount} skill${skillCount === 1 ? '' : 's'} available — type / to use one`} aria-label={`Skills: ${skillCount}`}>
+                <Icon name="skill" size={15} /> {skillCount}
               </button>
             )}
           </div>
+          <div className="composer-right">
+            <ContextMeter busy={generating || summarizing} />
           {generating || summarizing ? (
             <button className="send stop" onClick={onStop} aria-label="Stop generating" title="Stop">
-              ■
+              <Icon name="stop" size={16} />
             </button>
           ) : (
             <button className="send" onClick={() => void submit()} disabled={(!text.trim() && !files.length) || disabled} aria-label="Send" title="Send">
-              ↑
+              <Icon name="up" size={18} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

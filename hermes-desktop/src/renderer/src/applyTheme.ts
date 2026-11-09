@@ -13,6 +13,7 @@ export function applyAppearance(s: Pick<Settings, 'theme' | 'appearance'>, overr
   const r = resolveAppearance(s.theme, s.appearance, prefersDark(), override ?? undefined)
   const root = document.documentElement
   root.dataset.theme = r.base
+  root.dataset.glass = r.glass ? 'on' : 'off'
   for (const [k, v] of Object.entries(r.vars)) root.style.setProperty(k, v)
   return r
 }

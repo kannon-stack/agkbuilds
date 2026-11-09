@@ -37,6 +37,8 @@ export function MemorySettings() {
     await refreshMemory()
   }
   const update = async (id: string, patch: { text?: string; enabled?: boolean }) => {
+    // Show the on/off switch flipped right away; the reload below keeps whatever was actually saved.
+    if (patch.enabled !== undefined) useStore.setState((s) => ({ memory: s.memory.map((m) => (m.id === id ? { ...m, enabled: patch.enabled! } : m)) }))
     const r = await window.api.memory.update(id, patch)
     if (!r.ok) showToast(r.error)
     await refreshMemory()

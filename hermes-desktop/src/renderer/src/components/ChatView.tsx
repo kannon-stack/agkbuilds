@@ -2,50 +2,27 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { effectiveModel, useStore } from '../store'
 import { APP_NAME } from '../../../shared/types'
 import { pathOf, siblingInfo } from '../../../shared/tree'
+import { greeting, STARTERS } from '../../../shared/greeting'
 import { Composer } from './Composer'
 import { MessageItem } from './MessageItem'
-import { ExportMenu } from './ExportMenu'
 import { CompactionDivider } from './CompactionDivider'
+import { Icon, Mark } from './Icons'
 
-/** Chat title in the header: double-click (or ⋯ → Rename…) to edit. */
-function EditableTitle({ id, title, editing, onEditing }: { id: string; title: string; editing: boolean; onEditing(v: boolean): void }) {
-  const rename = useStore((s) => s.rename)
-  const [draft, setDraft] = useState(title)
+/** "Good evening, Dylan" — re-evaluated every few minutes so a window left open stays right. */
+function useGreeting(name: string): string {
+  const [hour, setHour] = useState(() => new Date().getHours())
   useEffect(() => {
-    if (editing) setDraft(title)
-  }, [editing])
-  const commit = async () => {
-    onEditing(false)
-    const t = draft.trim()
-    if (t && t !== title) await rename(id, t)
-  }
-  return editing ? (
-    <input
-      className="title-input"
-      aria-label="Chat title"
-      autoFocus
-      value={draft}
-      maxLength={120}
-      onFocus={(e) => e.currentTarget.select()}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') void commit()
-        if (e.key === 'Escape') onEditing(false)
-      }}
-    />
-  ) : (
-    <h1 title="Double-click to rename" onDoubleClick={() => onEditing(true)}>
-      {title}
-    </h1>
-  )
+    const t = setInterval(() => setHour(new Date().getHours()), 5 * 60_000)
+    return () => clearInterval(t)
+  }, [])
+  return greeting(hour, name)
 }
 
 export function ChatView() {
-  const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings, compacting } = useStore()
+  const { active, generating, settings, send, stop, regenerate, edit, switchBranch, openSettings, compacting, prefill } = useStore()
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
-  const [renaming, setRenaming] = useState(false)
+  const hello = useGreeting(settings?.userName ?? '')
   const [away, setAway] = useState(false) // scrolled up from the latest message
   // The messages on screen = the branch ending at the conversation's leaf.
   const path = useMemo(() => (active ? pathOf(active) : []), [active])
@@ -82,11 +59,7 @@ export function ChatView() {
   const lastId = path.at(-1)?.id
 
   return (
-    <main className="chat">
-      <header className="chat-head">
-        {empty ? <h1>New chat</h1> : <EditableTitle key={active!.id} id={active!.id} title={active!.title} editing={renaming} onEditing={setRenaming} />}
-        {!empty && <ExportMenu conversationId={active!.id} onRename={() => setRenaming(true)} />}
-      </header>
+    <main className={`chat ${empty ? 'is-empty' : ''}`}>
       <div
         className="scroller"
         ref={scroller}
@@ -99,13 +72,12 @@ export function ChatView() {
       >
         {empty ? (
           <div className="welcome">
-            <div className="welcome-mark">✦</div>
-            <h2>{APP_NAME}</h2>
-            <p className="muted">Your AI, on your terms. Start a conversation below.</p>
+            <span className="welcome-mark"><Mark size={22} /></span>
+            <h2>{hello}</h2>
             {(!provider?.baseUrl || !model) && (
               <div className="setup-card">
                 <strong>Finish setup</strong>
-                <p>Point {APP_NAME} at an OpenAI-compatible endpoint (like 9router) and choose a model.</p>
+                <p>Point {APP_NAME} at an OpenAI-compatible endpoint (like 9router) or Claude, and choose a model.</p>
                 <button className="btn primary" onClick={() => openSettings(true)}>
                   Open settings
                 </button>
@@ -145,11 +117,20 @@ export function ChatView() {
             scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
           }}
         >
-          ↓{busy ? ' New response' : ''}
+          <Icon name="down" size={14} />{busy ? ' New response' : ''}
         </button>
       )}
       </div>
-      <Composer generating={busy} disabled={!active} onSend={send} onStop={stop} />
+      <Composer generating={busy} disabled={!active} empty={empty} onSend={send} onStop={stop} />
+      {empty && (
+        <div className="starters" role="group" aria-label="Starter prompts">
+          {STARTERS.map((s) => (
+            <button key={s.label} className="starter" onClick={() => prefill(s.prompt)}>
+              <Icon name={s.icon} size={15} /> {s.label}
+            </button>
+          ))}
+        </div>
+      )}
     </main>
   )
 }

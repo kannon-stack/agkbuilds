@@ -11,7 +11,7 @@ A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 | Question | Decision | Why |
 |---|---|---|
 | Desktop framework | **Electron** + React + TypeScript + Vite (`electron-vite`) | "Most reliable": bundled Chromium renders identically on every OS. Tauri uses the system webview (WebKitGTK on Linux is the weak spot). Cost: ~100 MB installer. |
-| Providers | **Two kinds**: generic **OpenAI-compatible** (`/chat/completions` + `/models`; preset 9router at `http://localhost:20128/v1`) and the native **Anthropic Messages API** (official `@anthropic-ai/sdk`) | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak the first. Claude gets its own adapter for features the OpenAI shape can't carry: thinking blocks, prompt caching, effort, refusal handling. A conversation can switch providers mid-way. |
+| Providers | **Two kinds**: generic **OpenAI-compatible** (`/chat/completions` + `/models`; preset 9router at `http://127.0.0.1:20128/v1`) and the native **Anthropic Messages API** (official `@anthropic-ai/sdk`) | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak the first. Claude gets its own adapter for features the OpenAI shape can't carry: thinking blocks, prompt caching, effort, refusal handling. A conversation can switch providers mid-way. |
 | Persistence | JSON files in the OS user-data dir (`settings.json`, `conversations/<id>.json`), atomic writes | Zero native deps (no `better-sqlite3` rebuild pain). Hidden behind `src/main/store.ts` so SQLite can replace it when we need search/memory. |
 | State (UI) | Zustand | Small; chat streaming is a stream of tiny updates. |
 | Styling | Plain CSS with design tokens (`:root` variables) | Theming/customization = swapping variables. No CSS-framework lock-in. |
@@ -243,8 +243,10 @@ Linux: AppImage + deb + tar.gz · Windows: NSIS installer + zip · macOS: dmg + 
 - **11 built-in themes** (6 dark, 5 light, incl. two High Contrast). A unit test enforces WCAG contrast on every
   preset (text 7:1, muted/accent/status 4.5:1, code, syntax colours).
 - **Accent override** over any theme; the text-on-accent colour is recomputed for readability.
-- **Typography & shape:** UI font (4 stacks + custom), code font, text size 85–135 % (every text size
+- **Typography & shape:** UI font (5 stacks incl. the bundled "Modern" default, + custom), code font, text size 85–135 % (every text size
   scales, not just the base), corner roundness, chat width.
+- **Transparency effects:** frosted panels over a soft accent glow (on by default; solid panels when off or
+  with a High Contrast theme).
 - **Custom themes:** *Customize* any preset or *New theme* → editor with 18 colours, **live preview across the
   whole app**, a readability panel (advisory), Save/Cancel/Revert. **Export/Import** as JSON
   (`{"talariaTheme":1,"name","base","colors"}`) to share themes; imports are validated and open in the
@@ -259,17 +261,49 @@ Adding a preset = one entry in `PRESETS`; adding a new themable token = one key 
 
 ## UI
 
-- **Layout:** left sidebar (new chat, search, history grouped Today/Yesterday/7 days/Older,
-  inline rename on double-click, delete) · main thread (max-width 780px) · composer
-  with inline model picker and Send/Stop.
+The layout follows the most common pattern in AI chat apps (ChatGPT, Claude, Jan): history on the left,
+the conversation in the middle, the composer at the bottom. It's drawn in a soft "glass" style; see
+*UI redesign (Glass)* below for how that look is built.
+
+- **Title bar (app-drawn):** sidebar toggle · ✦ Talaria · model picker · chat title (double-click to rename) ·
+  ⋯ chat options (rename, regenerate title, export). Empty space drags the window.
+- **Sidebar:** New chat, search (`Ctrl/Cmd+K`), history grouped Today/Yesterday/7 days/Older with rename and
+  delete on hover, your name + Settings at the bottom. `Ctrl/Cmd+B` hides it (remembered on this computer).
+- **New chat:** a time-of-day greeting with your name (Settings → General), the composer centred, and five
+  starter prompts that fill the box (they never send on their own).
 - **Messages:** Markdown (GFM tables, lists), syntax-highlighted code blocks with Copy,
-  per-message Copy / Regenerate, streaming caret, "thinking" dots before first token.
+  per-message Copy / Edit / Regenerate, streaming caret, "thinking" dots before first token.
 - **Model picker:** provider switch + searchable list from `/models`; you can also type
   any model id (9router uses ids like `cc/claude-opus-4-7`). The last pick becomes the
   default for new chats.
-- **Settings:** Providers (name, base URL, key, default model, *Test connection*) and
-  General (theme system/dark/light, global system prompt, temperature).
-- **Shortcuts:** `Ctrl/Cmd+N` new chat · `Ctrl/Cmd+,` settings · `Enter` send · `Shift+Enter` newline.
+- **Settings:** a full page with a section menu in the sidebar's place (Providers, Tools, Memory, Skills,
+  MCP servers, Appearance, General). Esc or *Back to chat* returns; the chat stays mounted underneath, so a
+  half-written message survives the trip.
+- **Shortcuts:** `Ctrl/Cmd+N` new chat · `Ctrl/Cmd+K` search · `Ctrl/Cmd+B` sidebar · `Ctrl/Cmd+,` settings ·
+  `Enter` send · `Shift+Enter` newline.
+
+### UI redesign (Glass)
+
+Chosen from three mockups (floating panels, glass, calm flat). Implementation notes:
+
+- **Tokens, not per-theme CSS.** The glass look is a layer of derived variables in `styles.css`
+  (`--glass`, `--glass-side`, `--glass-line`, `--glass-blur`, `--app-glow`, `--shadow-soft`, `--hover`,
+  `--selected`, `--radius-xl`), all computed with `color-mix()` from each theme's own colours. Every built-in
+  and custom theme gets the look with no extra data.
+- **Transparency fallback.** `resolveAppearance()` returns `glass`; the renderer writes
+  `data-glass="on|off"` on `:root`. Off swaps the translucent surfaces for solid ones and removes the blur and
+  glow. It is off when **Appearance → Transparency effects** is unchecked (accessibility, older GPUs) and
+  always off for the High Contrast themes.
+- **Window chrome.** The window is created with `titleBarStyle: 'hidden'` plus `titleBarOverlay` on
+  Windows/Linux (native minimise/maximise/close drawn over the right end, coloured from the theme by
+  `titleBarOverlay()` and updated on every settings change and OS dark/light flip). macOS uses `hiddenInset`
+  traffic lights. The title bar is a drag region; its buttons, picker and title are `no-drag`. CSS reserves
+  room for the controls with `env(titlebar-area-*)`.
+- **Font.** Plus Jakarta Sans (OFL) is bundled via `@fontsource-variable/plus-jakarta-sans`, so it renders the
+  same on every OS and offline. It's the default *Interface font* ("Modern"); the older stacks remain.
+  Settings files written before the redesign keep the font they had.
+- **Icons** are a small inline-SVG set (`components/Icons.tsx`) drawn with `currentColor` instead of emoji,
+  so they follow the theme.
 
 ## Chat polish
 
@@ -402,4 +436,4 @@ screen and the requests the fake provider received. They print `• ok:` / `✗ 
 (they share port 20128), shows the full log of any failing suite, and exits non-zero.
 
 On first launch, open Settings → Providers → set the base URL (defaults to 9router's
-`http://localhost:20128/v1`), paste your key, **Test connection**, pick a default model.
+`http://127.0.0.1:20128/v1`), paste your key, **Test connection**, pick a default model.

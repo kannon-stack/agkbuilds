@@ -166,6 +166,17 @@ export function AppearanceSettings() {
       </div>
 
       <div className="form-block">
+        <b>Effects</b>
+        <label className="check switch">
+          <input type="checkbox" checked={a.glass} onChange={(e) => updateAppearance({ glass: e.target.checked })} aria-label="Transparency effects" />
+          <span>
+            <b>Transparency effects</b>
+            <span className="hint"> Frosted, see-through sidebar and panels over a soft glow of your accent colour. Turn off for solid panels (easier to read, lighter on older graphics cards). High-contrast themes always use solid panels.</span>
+          </span>
+        </label>
+      </div>
+
+      <div className="form-block">
         <b>Layout</b>
         <div className="two-col">
           <div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { effectiveModel, useStore } from '../store'
+import { Icon } from './Icons'
 
 export function ModelPicker() {
   const { active, settings, models, modelsLoading, setModel, loadModels, openSettings } = useStore()
@@ -44,10 +45,10 @@ export function ModelPicker() {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="picker-provider">{provider.name}</span>
-        <span className="picker-sep">/</span>
+        <span className="picker-dot" aria-hidden />
         <span className="picker-model">{model || 'Select a model'}</span>
-        <span className="chev">▾</span>
+        <span className="picker-provider">{provider.name}</span>
+        <Icon name="chevron" size={14} className="chev" />
       </button>
       {open && (
         <div className="popover" role="listbox">

@@ -50,17 +50,23 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   win.on('pageerror', e => { console.error('PAGE ERROR', e.message); process.exitCode = 1 })
   win.on('dialog', d => d.accept())
   const idle = () => win.waitForFunction(() => !document.querySelector('.send.stop'), null, { timeout: 20000 })
-  const ask = async (q, fresh = true) => { if (fresh) await win.keyboard.press('Control+n'); await win.fill('.composer textarea', q); await win.keyboard.press('Enter') }
+  // Waits until the message is on screen, so a send that went missing fails here and not 30 s later.
+  const ask = async (q, fresh = true) => {
+    if (fresh) { await win.keyboard.press('Control+n'); await win.waitForSelector('.chat.is-empty') }
+    const before = await win.$$eval('.msg-user', (e) => e.length)
+    await win.fill('.composer textarea', q); await win.keyboard.press('Enter')
+    await win.waitForFunction((n) => document.querySelectorAll('.msg-user').length > n, before, { timeout: 8000 })
+  }
   const openTab = async (name) => { await win.keyboard.press('Control+,'); await win.click(`.tabs button:has-text("${name}")`) }
   const closeSettings = () => win.keyboard.press('Escape')
   const toolNames = (b) => (b.tools ?? []).map(t => t.function.name)
   const memFile = () => { try { return JSON.parse(fs.readFileSync(path.join(ud, 'memory.json'), 'utf8')).items } catch { return [] } }
-  const chip = (emoji) => win.textContent(`.chip:has-text("${emoji}")`).catch(() => null)
+  const chip = (kind) => win.textContent(`.chip[data-kind=${kind}]`).catch(() => null)
 
   // ---- 1. baseline prompt + chips
   await settle(500)
-  check((await chip('⚡'))?.includes('1'), 'skills chip counts only usable skills (untrusted project skill excluded)')
-  check((await chip('🧠'))?.includes('0'), 'memory chip starts at 0')
+  check((await chip('skills'))?.includes('1'), 'skills chip counts only usable skills (untrusted project skill excluded)')
+  check((await chip('memory'))?.includes('0'), 'memory chip starts at 0')
   await ask('hello', false); await idle()
   let b = bodies.at(-1)
   check(sys(b).includes('## Skills') && sys(b).includes('- release-notes: Use when writing release notes') && !sys(b).includes('ws-skill'), 'prompt lists enabled skills, hides the untrusted project skill')
@@ -76,13 +82,13 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   await win.fill('.mem-add input', 'i live in LISBON!'); await win.click('.mem-add button:has-text("Add")'); await settle(200)
   check(await win.$$eval('.mem-list li', e => e.length) === 1, 'duplicate (case/punctuation) not stored twice')
   await closeSettings(); await settle(200)
-  check((await chip('🧠')).includes('1'), 'memory chip updates to 1')
+  check((await chip('memory')).includes('1'), 'memory chip updates to 1')
   await ask('hello again'); await idle()
   check(/- \[[a-z0-9]{6}\] I live in Lisbon/.test(sys(bodies.at(-1))), 'saved note is injected into the next chat\'s system prompt with its id')
   // disable → gone from prompt; edit; delete
   await openTab('Memory'); await win.uncheck('.mem-list li input[type=checkbox]'); await settle(250); await closeSettings()
   await ask('after disable'); await idle()
-  check(!sys(bodies.at(-1)).includes('Lisbon') && (await chip('🧠')).includes('0'), 'disabled note is not sent; chip drops to 0')
+  check(!sys(bodies.at(-1)).includes('Lisbon') && (await chip('memory')).includes('0'), 'disabled note is not sent; chip drops to 0')
   await openTab('Memory'); await win.check('.mem-list li input[type=checkbox]')
   await win.click('.mem-text'); await win.fill('.mem-body textarea', 'I live in Porto'); await win.keyboard.press('Enter'); await settle(250)
   check((await win.textContent('.mem-text')) === 'I live in Porto', 'inline edit saves')
@@ -103,7 +109,7 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   await win.click('button:has-text("Allow once")'); await idle()
   check(memFile().some(i => i.text === 'User prefers dark roast coffee' && i.source === 'model'), 'saved after approval, tagged as model-created')
   await settle(300)
-  check((await chip('🧠')).includes('2'), 'chip live-updates when the MODEL saves a note (data:changed)')
+  check((await chip('memory')).includes('2'), 'chip live-updates when the MODEL saves a note (data:changed)')
   // secrets never reach an approval prompt
   await ask('M-SECRET'); await idle()
   check(await win.$('.tool-awaiting_approval') === null && (await win.textContent('.tool-error')).length > 0 && !memFile().some(i => i.text.includes('hunter2')), 'model saving a secret: refused up-front, no prompt, nothing stored')
@@ -121,7 +127,7 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   // memory master switch
   await openTab('Memory'); await win.uncheck('.switch input'); await settle(300); await closeSettings()
   await ask('memory off'); await idle(); b = bodies.at(-1)
-  check(!sys(b).includes('## Memory') && !toolNames(b).includes('remember') && !toolNames(b).includes('forget') && await win.$('.chip:has-text("🧠")') === null, 'memory off: no prompt section, no tools, no chip')
+  check(!sys(b).includes('## Memory') && !toolNames(b).includes('remember') && !toolNames(b).includes('forget') && await win.$('.chip[data-kind=memory]') === null, 'memory off: no prompt section, no tools, no chip')
   await openTab('Memory'); await win.check('.switch input'); await settle(300); await closeSettings()
 
   // ---- 5. skills: model use_skill / read_skill_file / escape
@@ -159,7 +165,7 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   await win.click('button:has-text("Allow once")'); await idle(); await settle(300)
   const sm = fs.readFileSync(path.join(ud, 'skills', 'standup', 'SKILL.md'), 'utf8')
   check(sm.includes('name: standup') && sm.includes('talaria-model') && sm.includes('3. List blockers'), 'skill saved as SKILL.md, tagged as model-created')
-  check((await chip('⚡')).includes('2'), 'skills chip live-updates after the model creates one')
+  check((await chip('skills')).includes('2'), 'skills chip live-updates after the model creates one')
   await ask('after create'); await idle()
   check(sys(bodies.at(-1)).includes('- standup: Use for writing daily standup notes'), 'new skill appears in the next request\'s catalog')
 
@@ -185,7 +191,7 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
 
   // ---- 9. skill editor + import + delete
   await win.click('button:has-text("New skill")')
-  await win.fill('input[placeholder="code-review"]', 'My Skill'); await win.fill('.modal textarea >> nth=0', 'Does X when Y'); await win.click('button:has-text("Save skill")')
+  await win.fill('input[placeholder="code-review"]', 'My Skill'); await win.fill('.settings-page textarea >> nth=0', 'Does X when Y'); await win.click('button:has-text("Save skill")')
   check(await win.$('.status.bad:has-text("Name must")') !== null, 'editor validates the name')
   await win.fill('input[placeholder="code-review"]', 'my-skill'); await win.click('button:has-text("Save skill")'); await win.waitForSelector('.skill:has(.skill-name:text-is("/my-skill"))')
   check(fs.existsSync(path.join(ud, 'skills', 'my-skill', 'SKILL.md')), 'new skill saved from the UI')
@@ -202,14 +208,14 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
 
   // ---- 10. skills master switch
   await win.uncheck('.switch input'); await settle(300); await closeSettings()
-  check(await win.$('.chip:has-text("⚡")') === null, 'skills off: chip hidden')
+  check(await win.$('.chip[data-kind=skills]') === null, 'skills off: chip hidden')
   await ask('/release-notes v9'); await idle(); b = bodies.at(-1)
   check(!sys(b).includes('## Skills') && !toolNames(b).includes('use_skill') && !toolNames(b).includes('create_skill') && lastUser(b) === '/release-notes v9' && await win.$$eval('.skill-chip', e => e.length) === 0, 'skills off: no catalog, no tools, /name is plain text')
   await openTab('Skills'); await win.check('.switch input'); await settle(300); await closeSettings()
 
   // ---- 11. persistence + hostile settings
   await app.close(); app = await launch(); win = await app.firstWindow(); await win.setViewportSize({ width: 1180, height: 860 }); await win.waitForSelector('.sidebar'); await settle(600)
-  check((await chip('⚡'))?.includes('3') && (await chip('🧠'))?.includes('2'), 'memory + skills persist across restart (chips: ' + (await chip('⚡')) + ' ' + (await chip('🧠')) + ')')
+  check((await chip('skills'))?.includes('3') && (await chip('memory'))?.includes('2'), 'memory + skills persist across restart (chips: ' + (await chip('skills')) + ' ' + (await chip('memory')) + ')')
   await app.close()
   const cur = JSON.parse(fs.readFileSync(path.join(ud, 'settings.json'), 'utf8'))
   fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ titles: { enabled: false }, ...cur, skills: { enabled: 'yes', disabled: 'nope', trusted: { a: 5, b: { x: 1 } } }, memory: 'weird' }))
