@@ -11,7 +11,7 @@ A customizable AI chat desktop app in the spirit of Hermes-style clients. Covers
 | Question | Decision | Why |
 |---|---|---|
 | Desktop framework | **Electron** + React + TypeScript + Vite (`electron-vite`) | "Most reliable": bundled Chromium renders identically on every OS. Tauri uses the system webview (WebKitGTK on Linux is the weak spot). Cost: ~100 MB installer. |
-| Providers | **Two kinds**: generic **OpenAI-compatible** (`/chat/completions` + `/models`; preset 9router at `http://localhost:20128/v1`) and the native **Anthropic Messages API** (official `@anthropic-ai/sdk`) | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak the first. Claude gets its own adapter for features the OpenAI shape can't carry: thinking blocks, prompt caching, effort, refusal handling. A conversation can switch providers mid-way. |
+| Providers | **Two kinds**: generic **OpenAI-compatible** (`/chat/completions` + `/models`; preset 9router at `http://127.0.0.1:20128/v1`) and the native **Anthropic Messages API** (official `@anthropic-ai/sdk`) | 9router, Ollama, OpenRouter, vLLM, LM Studio all speak the first. Claude gets its own adapter for features the OpenAI shape can't carry: thinking blocks, prompt caching, effort, refusal handling. A conversation can switch providers mid-way. |
 | Persistence | JSON files in the OS user-data dir (`settings.json`, `conversations/<id>.json`), atomic writes | Zero native deps (no `better-sqlite3` rebuild pain). Hidden behind `src/main/store.ts` so SQLite can replace it when we need search/memory. |
 | State (UI) | Zustand | Small; chat streaming is a stream of tiny updates. |
 | Styling | Plain CSS with design tokens (`:root` variables) | Theming/customization = swapping variables. No CSS-framework lock-in. |
@@ -436,4 +436,4 @@ screen and the requests the fake provider received. They print `• ok:` / `✗ 
 (they share port 20128), shows the full log of any failing suite, and exits non-zero.
 
 On first launch, open Settings → Providers → set the base URL (defaults to 9router's
-`http://localhost:20128/v1`), paste your key, **Test connection**, pick a default model.
+`http://127.0.0.1:20128/v1`), paste your key, **Test connection**, pick a default model.

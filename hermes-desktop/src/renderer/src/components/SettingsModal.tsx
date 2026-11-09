@@ -270,7 +270,7 @@ function Providers({ providers, activeId, onChange }: { providers: Provider[]; a
   const current = providers.find((p) => p.id === selected)
 
   const add = async () => {
-    const s = await window.api.settings.saveProvider({ name: 'New provider', baseUrl: 'http://localhost:20128/v1', defaultModel: '' })
+    const s = await window.api.settings.saveProvider({ name: 'New provider', baseUrl: 'http://127.0.0.1:20128/v1', defaultModel: '' })
     onChange(s)
     setSelected(s.providers.at(-1)!.id)
   }
@@ -358,7 +358,7 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
             if (k === 'anthropic') {
               if (!baseUrl || /localhost|127\.0\.0\.1/.test(baseUrl)) setBaseUrl(ANTHROPIC_BASE_URL)
               if (!defaultModel) setDefaultModel(ANTHROPIC_DEFAULT_MODEL)
-            } else if (baseUrl === ANTHROPIC_BASE_URL) setBaseUrl('http://localhost:20128/v1')
+            } else if (baseUrl === ANTHROPIC_BASE_URL) setBaseUrl('http://127.0.0.1:20128/v1')
           }}
         >
           <option value="openai">OpenAI-compatible (9router, Ollama, OpenRouter, vLLM…)</option>
@@ -367,7 +367,7 @@ function ProviderForm({ provider, canDelete, onChange }: { provider: Provider; c
       </label>
       <label>
         {claude ? 'API URL' : 'Base URL'}
-        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={claude ? ANTHROPIC_BASE_URL : 'http://localhost:20128/v1'} spellCheck={false} />
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={claude ? ANTHROPIC_BASE_URL : 'http://127.0.0.1:20128/v1'} spellCheck={false} />
         <span className="hint">
           {claude ? (
             <>Leave as <code>{ANTHROPIC_BASE_URL}</code> unless you use a gateway. Uses the Messages API with streaming, tools and prompt caching.</>

@@ -146,7 +146,17 @@ export class ToolCallAccumulator {
   }
 }
 
+/** HTTP error text, plus what to do about the common "needs a key" case. */
 async function errorFromResponse(res: Response): Promise<string> {
+  const msg = await errorBody(res)
+  if (res.status === 401 || res.status === 403) {
+    const local = isLocal(res.url)
+    return `${msg}\nThis server wants an API key: paste it in Settings → Providers → API key${local ? ' (for 9router, copy the key from its dashboard)' : ''}, then Test connection.`
+  }
+  return msg
+}
+
+async function errorBody(res: Response): Promise<string> {
   const body = await res.text().catch(() => '')
   try {
     const j = JSON.parse(body)
@@ -158,15 +168,70 @@ async function errorFromResponse(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 300)}` : ''}`
 }
 
+const isLocal = (url: string): boolean => {
+  try {
+    return /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/i.test(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
 function networkError(baseUrl: string, e: unknown): Error {
   const err = e as Error & { cause?: { code?: string } }
   if (err?.name === 'AbortError') return err
-  const code = err?.cause?.code
-  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || err?.message === 'fetch failed') {
-    return new Error(`Could not reach ${baseUrl}. Is the server running?`)
+  if (isConnectFailure(e)) {
+    const tried = /^localhost$/i.test(safeHost(baseUrl)) ? ' (also tried 127.0.0.1 and [::1])' : ''
+    return new Error(
+      `Could not reach ${baseUrl}${tried}. Is the server running?` +
+        (isLocal(baseUrl) ? ' If you use 9router, start it and check the port in its dashboard matches this URL.' : '')
+    )
   }
   return err instanceof Error ? err : new Error(String(e))
 }
+
+const safeHost = (url: string): string => {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
+/** The request never reached a server (refused, no such host, reset while connecting). */
+export function isConnectFailure(e: unknown): boolean {
+  const err = e as Error & { code?: string; cause?: { code?: string } }
+  if (!err || err.name === 'AbortError') return false
+  const code = err.cause?.code ?? err.code
+  return ['ECONNREFUSED', 'ENOTFOUND', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET', 'EAI_AGAIN'].includes(code ?? '') || err.message === 'fetch failed'
+}
+
+/**
+ * "localhost" can resolve to IPv6 (::1) first — the default on Windows — while local servers such as
+ * 9router listen on IPv4 only, so the connection is refused. For localhost URLs we also try
+ * 127.0.0.1 and [::1], and remember which address answered (per port) to go there first next time.
+ */
+const loopbackPick = new Map<string, string>()
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]']
+
+export function loopbackCandidates(url: string): string[] {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return [url]
+  }
+  if (u.hostname.toLowerCase() !== 'localhost') return [url]
+  const first = loopbackPick.get(u.port)
+  const hosts = first ? [first, ...LOOPBACK.filter((h) => h !== first)] : LOOPBACK
+  return hosts.map((h) => {
+    const v = new URL(url)
+    v.hostname = h
+    return v.toString()
+  })
+}
+
+/** Test hook: forget which loopback address worked. */
+export const resetLoopbackCache = (): void => loopbackPick.clear()
 
 /**
  * Fetch with a header-arrival timeout. The caller's signal stays linked to the
@@ -178,8 +243,24 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number, sign
   if (signal?.aborted) ctl.abort()
   else signal?.addEventListener('abort', () => ctl.abort(), { once: true })
   const timer = setTimeout(() => ctl.abort(new Error('timeout')), ms)
+  const candidates = loopbackCandidates(url)
+  let firstError: unknown
   try {
-    return await fetch(url, { ...init, signal: ctl.signal })
+    for (const target of candidates) {
+      try {
+        const res = await fetch(target, { ...init, signal: ctl.signal })
+        if (target !== url || candidates.length > 1) {
+          const u = new URL(target)
+          loopbackPick.set(u.port, u.hostname)
+        }
+        return res
+      } catch (e) {
+        firstError ??= e
+        // Only a refused/unresolvable connection is worth retrying on another address.
+        if (ctl.signal.aborted || !isConnectFailure(e)) throw e
+      }
+    }
+    throw firstError
   } catch (e) {
     if (ctl.signal.reason instanceof Error && ctl.signal.reason.message === 'timeout') {
       throw new Error(`Timed out connecting to ${url}`)
