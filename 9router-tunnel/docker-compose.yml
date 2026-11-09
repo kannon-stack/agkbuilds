@@ -1,0 +1,58 @@
+# 9router on your own machine, exposed publicly through a free Cloudflare Tunnel.
+#
+#   docker compose up -d                          # 9router only (http://localhost:20128)
+#   docker compose --profile tunnel up -d         # + named tunnel on your own domain
+#   docker compose --profile quick up -d          # + throwaway https://*.trycloudflare.com URL
+#
+# See README.md for setup.
+
+services:
+  9router:
+    image: decolua/9router:${NINE_ROUTER_VERSION:-0.5.112}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "20128"
+      HOSTNAME: 0.0.0.0
+      DATA_DIR: /app/data
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD:?set INITIAL_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      API_KEY_SECRET: ${API_KEY_SECRET:?set API_KEY_SECRET in .env}
+      MACHINE_ID_SALT: ${MACHINE_ID_SALT:?set MACHINE_ID_SALT in .env}
+      REQUIRE_API_KEY: "true"
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      BASE_URL: ${BASE_URL:-http://localhost:20128}
+      NEXT_PUBLIC_BASE_URL: ${BASE_URL:-http://localhost:20128}
+    volumes:
+      # SQLite DB (providers, API keys, usage) lives here. Back this volume up.
+      - 9router-data:/app/data
+    # Loopback only: the tunnel reaches 9router over the compose network,
+    # so nothing else on your LAN can hit it directly.
+    ports:
+      - "127.0.0.1:${HOST_PORT:-20128}:20128"
+
+  # Named tunnel (stable hostname on a domain in your Cloudflare account).
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # Empty by default so plain `docker compose up -d` works; the named-tunnel
+      # profile fails at startup with a clear cloudflared error if it is unset.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - 9router
+
+  # Quick tunnel: no account or domain needed. The URL is random and changes
+  # on every restart (read it from `docker compose logs cloudflared-quick`).
+  cloudflared-quick:
+    profiles: ["quick"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://9router:20128
+    depends_on:
+      - 9router
+
+volumes:
+  9router-data:
