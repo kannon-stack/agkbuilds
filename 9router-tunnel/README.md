@@ -43,6 +43,8 @@ The container is bound to `127.0.0.1` only.
 
 ## 3. Make it public (pick one)
 
+> **Read step 4 before you leave this running.** The dashboard login page is reachable by anyone with the URL as soon as a tunnel starts, and the quick tunnel is public immediately.
+
 ### A. Quick tunnel: no account, no domain, random URL
 
 ```bash
@@ -110,12 +112,16 @@ For a PC that sleeps or reboots, `restart: unless-stopped` brings the containers
 starts. For truly always-on, run the same folder on an always-free VM (for example Oracle Cloud
 Always Free ARM; the 9router image is published for arm64). Nothing here changes.
 
-## Not verified yet
+## Verification status
 
-Written without Docker available on the authoring machine, so nothing here has been run.
-Worth confirming on first start:
+Tested on Windows with Docker Desktop:
 
-- `docker compose config` parses cleanly and `docker compose up -d` brings 9router up on :20128.
-- The named-tunnel flow with your account's current dashboard layout (menu names move around).
-- 9router behaves correctly behind the tunnel, including streaming (SSE) responses from `/v1/chat/completions`.
+- The stack starts, `/api/health` returns 200, and `/v1/models` without an API key returns 401, both locally and through a quick tunnel.
+- Migrating an existing 9router database into the data volume works.
+
+Not tested yet:
+
+- The named-tunnel profile (menu names in the Cloudflare dashboard move around, so expect to adapt step 3B).
+- Streaming (SSE) responses from `/v1/chat/completions` through the tunnel.
+- A fresh-machine run of these README steps.
 - `cloudflare/cloudflared:latest` is unpinned; pin a version tag once you have one that works.
