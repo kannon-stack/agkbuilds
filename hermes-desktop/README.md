@@ -16,7 +16,7 @@ Download the installer for your OS from the project's GitHub **Releases** (or bu
 
 First launch: **Settings → Providers** (`Ctrl+,`, or the settings button at the bottom of the sidebar). Tell it your name under **Settings → General** for the greeting.
 - **Claude:** **＋ Add Claude**, paste your Anthropic API key, **Test connection**, pick a model (default `claude-opus-5-5`).
-- **Anything OpenAI-compatible** (9router, Ollama, OpenRouter…): set the base URL (default `http://localhost:20128/v1`), key, **Test connection**, pick a model.
+- **Anything OpenAI-compatible** (9router, Ollama, OpenRouter…): set the base URL (default `http://127.0.0.1:20128/v1`), key, **Test connection**, pick a model.
 
 ### Where your data lives
 Chats, settings, memory, skills and attached images are plain files in the app's data folder (also reachable from **Settings → General →
@@ -35,6 +35,10 @@ Open data folder**). **Uninstalling never deletes them.**
 - **An MCP server fails with "command not found" (`npx`, `uvx`…)** when the app is started from the Dock/Start menu: GUI apps
   don't inherit your terminal's `PATH`. Use the command's absolute path (e.g. `/opt/homebrew/bin/npx`), or start Talaria from a terminal.
 - **Remote MCP server says “Sign-in required”:** press **Sign in** (Settings → MCP). If a browser can't reach `127.0.0.1:33418`, check for a local firewall; if the server has no automatic app registration, add its Client ID under *OAuth settings (advanced)*.
+- **"Could not reach http://localhost:20128/v1" with 9router running** (common on Windows): `localhost` can resolve to IPv6 while
+  9router listens on IPv4. Talaria retries `127.0.0.1` and `[::1]` automatically; if it still fails, set the base URL to
+  `http://127.0.0.1:20128/v1` and check the port in 9router's dashboard. A **401/403** means 9router wants its API key
+  (copy it from the dashboard into Settings → Providers → API key).
 - **Report a problem:** **Settings → General → Copy diagnostics** gives version/OS info to paste into an issue.
 
 ## Build from source

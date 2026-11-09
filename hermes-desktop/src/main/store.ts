@@ -50,7 +50,7 @@ const DEFAULT_PROVIDER: ProviderRecord = {
   id: 'default',
   name: '9router (local)',
   kind: 'openai',
-  baseUrl: 'http://localhost:20128/v1',
+  baseUrl: 'http://127.0.0.1:20128/v1',
   defaultModel: ''
 }
 

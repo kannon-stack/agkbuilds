@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { fetchModels, parsePayload, splitSSE, streamChat, ToolCallAccumulator, type StreamEvent } from '../src/main/openai'
+import { fetchModels, loopbackCandidates, parsePayload, resetLoopbackCache, splitSSE, streamChat, ToolCallAccumulator, type StreamEvent } from '../src/main/openai'
 
 describe('splitSSE', () => {
   it('splits complete events and keeps the partial tail', () => {
@@ -191,5 +191,85 @@ describe('fetchModels', () => {
       res.end('{"data":[{"id":"zeta"},{"id":"cc/alpha"}]}')
     }
     expect(await fetchModels(base)).toEqual(['cc/alpha', 'zeta'])
+  })
+})
+
+describe('localhost fallback (Windows resolves localhost to IPv6 first; 9router listens on IPv4)', () => {
+  const refused = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })
+  let realFetch: typeof fetch
+  let calls: string[]
+  beforeEach(() => {
+    realFetch = globalThis.fetch
+    calls = []
+    resetLoopbackCache()
+  })
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+  /** Fake network where only the given host answers. */
+  const only = (host: string) => {
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url)
+      if (new URL(url).hostname !== host) throw refused()
+      return new Response(JSON.stringify({ data: [{ id: 'm1' }] }), { status: 200 })
+    }) as typeof fetch
+  }
+
+  it('lists candidate addresses only for localhost', () => {
+    expect(loopbackCandidates('http://localhost:20128/v1/models')).toEqual([
+      'http://localhost:20128/v1/models', 'http://127.0.0.1:20128/v1/models', 'http://[::1]:20128/v1/models'
+    ])
+    expect(loopbackCandidates('http://127.0.0.1:20128/v1/models')).toEqual(['http://127.0.0.1:20128/v1/models'])
+    expect(loopbackCandidates('https://api.example.com/v1/models')).toEqual(['https://api.example.com/v1/models'])
+  })
+
+  it('retries 127.0.0.1 when localhost is refused, and goes there first next time', async () => {
+    only('127.0.0.1')
+    expect(await fetchModels('http://localhost:20128/v1')).toEqual(['m1'])
+    expect(calls).toEqual(['http://localhost:20128/v1/models', 'http://127.0.0.1:20128/v1/models'])
+    calls = []
+    expect(await fetchModels('http://localhost:20128/v1')).toEqual(['m1'])
+    expect(calls).toEqual(['http://127.0.0.1:20128/v1/models'])
+  })
+
+  it('also tries [::1] for servers that listen on IPv6 only', async () => {
+    only('[::1]')
+    expect(await fetchModels('http://localhost:20128/v1')).toEqual(['m1'])
+    expect(calls.at(-1)).toBe('http://[::1]:20128/v1/models')
+  })
+
+  it('applies to chat streaming too', async () => {
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url)
+      if (new URL(url).hostname !== '127.0.0.1') throw refused()
+      return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+    }) as typeof fetch
+    const out: StreamEvent[] = []
+    for await (const ev of streamChat({ baseUrl: 'http://localhost:20128/v1', model: 'm', messages: [] })) out.push(ev)
+    expect(out).toContainEqual({ type: 'text', text: 'hi' })
+  })
+
+  it('when nothing answers, says what was tried and what to check', async () => {
+    only('nowhere')
+    await expect(fetchModels('http://localhost:20128/v1')).rejects.toThrow(/Could not reach http:\/\/localhost:20128\/v1 \(also tried 127\.0\.0\.1 and \[::1\]\).*9router/)
+    expect(calls).toHaveLength(3)
+  })
+
+  it('does not retry remote hosts or non-connection errors', async () => {
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url)
+      throw refused()
+    }) as typeof fetch
+    await expect(fetchModels('https://api.example.com/v1')).rejects.toThrow(/Could not reach https:\/\/api\.example\.com\/v1\. Is the server running\?$/)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('a 401 from a local server explains where the key goes', async () => {
+    globalThis.fetch = (async (url: string) => {
+      const r = new Response(JSON.stringify({ error: { message: 'Invalid API key' } }), { status: 401 })
+      Object.defineProperty(r, 'url', { value: url })
+      return r
+    }) as typeof fetch
+    await expect(fetchModels('http://127.0.0.1:20128/v1')).rejects.toThrow(/401: Invalid API key\nThis server wants an API key: paste it in Settings → Providers → API key \(for 9router, copy the key from its dashboard\)/)
   })
 })
