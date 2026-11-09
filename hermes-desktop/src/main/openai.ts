@@ -176,33 +176,67 @@ const isLocal = (url: string): boolean => {
   }
 }
 
+/** One failed connection attempt, for the error message. */
+interface Attempt {
+  target: string
+  via: 'node' | 'chromium'
+  detail: string
+}
+
+/** Every way we tried to reach a server failed; carries what each attempt said. */
+export class ConnectError extends Error {
+  constructor(readonly attempts: Attempt[]) {
+    super('fetch failed')
+    this.name = 'ConnectError'
+  }
+}
+
+/** "ECONNREFUSED", "connect EACCES 127.0.0.1:20128", "net::ERR_CONNECTION_REFUSED"… — the useful part of a network error. */
+export function describeNetError(e: unknown): string {
+  const err = e as Error & { code?: string; cause?: Error & { code?: string; errors?: Error[] } }
+  const cause = err?.cause
+  const inner = cause?.errors?.length ? cause.errors.map((x) => x.message).join(' / ') : cause?.message
+  const text = inner || err?.message || String(e)
+  const code = cause?.code ?? err?.code
+  return code && !text.includes(code) ? `${code} (${text})` : text
+}
+
 function networkError(baseUrl: string, e: unknown): Error {
-  const err = e as Error & { cause?: { code?: string } }
+  const err = e as Error
   if (err?.name === 'AbortError') return err
-  if (isConnectFailure(e)) {
-    const tried = /^localhost$/i.test(safeHost(baseUrl)) ? ' (also tried 127.0.0.1 and [::1])' : ''
+  if (e instanceof ConnectError || isConnectFailure(e)) {
+    const attempts = e instanceof ConnectError ? e.attempts : [{ target: baseUrl, via: 'node' as const, detail: describeNetError(e) }]
+    const lines = attempts.map((a) => `• ${hostOf(a.target)}${a.via === 'chromium' ? ' (browser network)' : ''}: ${a.detail}`)
+    const blockedHint = attempts.some((a) => /EACCES|EPERM|ACCESS_DENIED|BLOCKED/i.test(a.detail))
+      ? '\nSomething on this computer (often antivirus or firewall software) is blocking Talaria from connecting. Allow Talaria in it and try again.'
+      : ''
     return new Error(
-      `Could not reach ${baseUrl}${tried}. Is the server running?` +
-        (isLocal(baseUrl) ? ' If you use 9router, start it and check the port in its dashboard matches this URL.' : '')
+      `Could not reach ${baseUrl}. Is the server running?` +
+        (isLocal(baseUrl) ? ' If you use 9router, start it and check the port in its dashboard matches this URL.' : '') +
+        `\n${lines.join('\n')}${blockedHint}`
     )
   }
   return err instanceof Error ? err : new Error(String(e))
 }
 
-const safeHost = (url: string): string => {
+const hostOf = (url: string): string => {
   try {
-    return new URL(url).hostname
+    return new URL(url).host
   } catch {
-    return ''
+    return url
   }
 }
 
-/** The request never reached a server (refused, no such host, reset while connecting). */
+/** The request never reached a server (refused, no such host, blocked, reset while connecting). */
 export function isConnectFailure(e: unknown): boolean {
   const err = e as Error & { code?: string; cause?: { code?: string } }
   if (!err || err.name === 'AbortError') return false
+  if (e instanceof ConnectError) return true
   const code = err.cause?.code ?? err.code
-  return ['ECONNREFUSED', 'ENOTFOUND', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET', 'EAI_AGAIN'].includes(code ?? '') || err.message === 'fetch failed'
+  return (
+    ['ECONNREFUSED', 'ENOTFOUND', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNRESET', 'EAI_AGAIN', 'EACCES', 'EPERM'].includes(code ?? '') ||
+    err.message === 'fetch failed'
+  )
 }
 
 /**
@@ -230,8 +264,31 @@ export function loopbackCandidates(url: string): string[] {
   })
 }
 
-/** Test hook: forget which loopback address worked. */
-export const resetLoopbackCache = (): void => loopbackPick.clear()
+/**
+ * Second network stack to try when Node's own fetch can't connect. The main process sets it to
+ * Electron's net.fetch (Chromium's networking, as used by the browser): on some PCs security software
+ * or proxy setups let the browser through but not Node. Servers it reached are remembered and used directly.
+ */
+type FetchFn = (url: string, init: RequestInit) => Promise<Response>
+let fallbackFetch: FetchFn | null = null
+const fallbackOrigins = new Set<string>()
+export function setFallbackFetch(f: FetchFn | null): void {
+  fallbackFetch = f
+}
+
+const originOf = (url: string): string => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return url
+  }
+}
+
+/** Test hook: forget which address / network stack worked. */
+export const resetLoopbackCache = (): void => {
+  loopbackPick.clear()
+  fallbackOrigins.clear()
+}
 
 /**
  * Fetch with a header-arrival timeout. The caller's signal stays linked to the
@@ -243,24 +300,37 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number, sign
   if (signal?.aborted) ctl.abort()
   else signal?.addEventListener('abort', () => ctl.abort(), { once: true })
   const timer = setTimeout(() => ctl.abort(new Error('timeout')), ms)
-  const candidates = loopbackCandidates(url)
-  let firstError: unknown
+  const opts = { ...init, signal: ctl.signal }
+  const origin = originOf(url)
+  const attempts: Attempt[] = []
   try {
+    if (fallbackFetch && fallbackOrigins.has(origin)) return await fallbackFetch(url, opts)
+    const candidates = loopbackCandidates(url)
     for (const target of candidates) {
       try {
-        const res = await fetch(target, { ...init, signal: ctl.signal })
-        if (target !== url || candidates.length > 1) {
+        const res = await fetch(target, opts)
+        if (candidates.length > 1) {
           const u = new URL(target)
           loopbackPick.set(u.port, u.hostname)
         }
         return res
       } catch (e) {
-        firstError ??= e
-        // Only a refused/unresolvable connection is worth retrying on another address.
+        // Only a refused/unresolvable/blocked connection is worth retrying another way.
         if (ctl.signal.aborted || !isConnectFailure(e)) throw e
+        attempts.push({ target, via: 'node', detail: describeNetError(e) })
       }
     }
-    throw firstError
+    if (fallbackFetch) {
+      try {
+        const res = await fallbackFetch(url, opts)
+        fallbackOrigins.add(origin)
+        return res
+      } catch (e) {
+        if (ctl.signal.aborted) throw e
+        attempts.push({ target: url, via: 'chromium', detail: describeNetError(e) })
+      }
+    }
+    throw new ConnectError(attempts)
   } catch (e) {
     if (ctl.signal.reason instanceof Error && ctl.signal.reason.message === 'timeout') {
       throw new Error(`Timed out connecting to ${url}`)

@@ -35,9 +35,10 @@ Open data folder**). **Uninstalling never deletes them.**
 - **An MCP server fails with "command not found" (`npx`, `uvx`…)** when the app is started from the Dock/Start menu: GUI apps
   don't inherit your terminal's `PATH`. Use the command's absolute path (e.g. `/opt/homebrew/bin/npx`), or start Talaria from a terminal.
 - **Remote MCP server says “Sign-in required”:** press **Sign in** (Settings → MCP). If a browser can't reach `127.0.0.1:33418`, check for a local firewall; if the server has no automatic app registration, add its Client ID under *OAuth settings (advanced)*.
-- **"Could not reach http://localhost:20128/v1" with 9router running** (common on Windows): `localhost` can resolve to IPv6 while
-  9router listens on IPv4. Talaria retries `127.0.0.1` and `[::1]` automatically; if it still fails, set the base URL to
-  `http://127.0.0.1:20128/v1` and check the port in 9router's dashboard. A **401/403** means 9router wants its API key
+- **"Could not reach http://localhost:20128/v1" with 9router running** (common on Windows): Talaria tries `localhost`,
+  `127.0.0.1` and `[::1]`, then the browser's network stack (some antivirus/firewall setups block apps' own networking but
+  not the browser's). The error lists each attempt with its reason; `EACCES`/`EPERM` means security software is blocking
+  Talaria — allow it there. Check the port in 9router's dashboard matches. A **401/403** means 9router wants its API key
   (copy it from the dashboard into Settings → Providers → API key).
 - **Report a problem:** **Settings → General → Copy diagnostics** gives version/OS info to paste into an issue.
 
@@ -58,8 +59,8 @@ npm run icons          # re-render build/icon.png from build/icon.svg
 
 ### Tests
 - `npm test` — unit/integration tests (vitest, no window; fast).
-- `npm run e2e` — builds, then drives the **real app** through 17 suites (chat, tools, MCP + OAuth, Claude, theming, memory/skills,
-  branching, export, search, attachments, context, titles, redesign…) against local fake providers, with Playwright's Electron driver.
+- `npm run e2e` — builds, then drives the **real app** through 18 suites (chat, tools, MCP + OAuth, Claude, theming, memory/skills,
+  branching, export, search, attachments, context, titles, redesign, network…) against local fake providers, with Playwright's Electron driver.
   `node tests/e2e/run.cjs search titles` runs a subset (after `npm run build`); `E2E_VERBOSE=1` streams each suite's log.
   On Linux without a display use `xvfb-run -a npm run e2e`. The fake providers use port **20128** (9router's default) — stop 9router first.
   To test a packaged build: `TALARIA_UNFUSED=1 npm run pack`, then `TALARIA_BIN=release/linux-unpacked/talaria node tests/e2e/run.cjs`
