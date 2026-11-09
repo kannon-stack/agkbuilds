@@ -128,7 +128,7 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .editor textarea { width: 100%; resize: none; background: transparent; border: 0; outline: 0; color: var(--text); font: inherit; line-height: 1.5; min-height: 52px; }
 .editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .editor-hint { margin: 0; font-size: calc(11.5px * var(--font-scale, 1)); }
-.msg-error { margin-top: 8px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger), transparent 55%); background: color-mix(in srgb, var(--danger), transparent 90%); border-radius: var(--radius); color: var(--danger); font-size: calc(13px * var(--font-scale, 1)); overflow-wrap: anywhere; }
+.msg-error { margin-top: 8px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger), transparent 55%); background: color-mix(in srgb, var(--danger), transparent 90%); border-radius: var(--radius); color: var(--danger); font-size: calc(13px * var(--font-scale, 1)); overflow-wrap: anywhere; white-space: pre-line; }
 .caret { display: inline-block; width: 8px; height: 1.05em; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: blink 1s steps(2) infinite; border-radius: 1px; }
 .thinking { display: inline-flex; gap: 5px; padding: 8px 0; }
 .thinking span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
@@ -213,7 +213,7 @@ kbd { font: calc(11px * var(--font-scale, 1)) var(--font-mono); color: var(--mut
 .provider-list .add { color: var(--muted); margin-top: 6px; }
 .form-actions { display: flex; gap: 8px; align-items: center; }
 .form-actions .btn { justify-content: center; }
-.status { padding: 9px 12px; border-radius: var(--radius); font-size: calc(13px * var(--font-scale, 1)); overflow-wrap: anywhere; }
+.status { padding: 9px 12px; border-radius: var(--radius); font-size: calc(13px * var(--font-scale, 1)); overflow-wrap: anywhere; white-space: pre-line; }
 .status.ok { color: var(--ok); background: color-mix(in srgb, var(--ok), transparent 90%); border: 1px solid color-mix(in srgb, var(--ok), transparent 65%); }
 .status.bad { color: var(--danger); background: color-mix(in srgb, var(--danger), transparent 90%); border: 1px solid color-mix(in srgb, var(--danger), transparent 65%); }
 .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; box-shadow: var(--shadow); z-index: 100; max-width: 80vw; }

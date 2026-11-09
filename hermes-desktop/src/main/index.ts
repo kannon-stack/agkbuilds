@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, shell } from 'electron'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { APP_ID, APP_NAME } from '../shared/types'
@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import type { ConnectionResult } from '../shared/types'
 import * as store from './store'
 import * as chat from './chat'
-import { fetchModels } from './openai'
+import { fetchModels, setFallbackFetch } from './openai'
 import { listClaudeModels } from './anthropic'
 import type { ProviderKind } from '../shared/anthropic'
 import { mcp } from './mcp/instance'
@@ -376,6 +376,9 @@ if (!app.requestSingleInstanceLock()) {
     await store.pruneEmptyConversations()
     void pruneAttachments()
     nativeTheme.themeSource = (await store.getSettings()).theme
+    // If Node's networking can't reach a provider (some antivirus/firewall/proxy setups block it while
+    // allowing the browser), retry through Chromium's networking — the same stack the browser uses.
+    setFallbackFetch((url, init) => net.fetch(url, init as RequestInit))
     // In "System" mode the OS can flip dark/light at any time: follow it with the window chrome too.
     nativeTheme.on('updated', () => void applyChrome())
     registerIpc()
