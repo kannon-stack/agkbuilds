@@ -93,6 +93,8 @@ const readCollapsed = (): boolean => {
   }
 }
 let draftSeq = 0
+/** A new chat still being created: messages sent meanwhile must wait for it, or they land in the previous chat. */
+let pendingNewChat: Promise<void> | null = null
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
 let appearanceTimer: ReturnType<typeof setTimeout> | undefined
@@ -153,11 +155,18 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async newChat() {
+    if (pendingNewChat) return pendingNewChat
     const { active } = get()
     // Reuse the current draft instead of piling up empty chats.
     if (active && active.messages.length === 0) return
-    const c = await window.api.conversations.create()
-    set({ active: c })
+    const run = (async () => {
+      const c = await window.api.conversations.create()
+      set({ active: c })
+    })()
+    pendingNewChat = run.finally(() => {
+      pendingNewChat = null
+    })
+    return pendingNewChat
   },
 
   async remove(id) {
@@ -187,6 +196,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async send(text, attachments) {
+    // Ctrl+N then typing quickly: send into the chat being created, not the one being left.
+    if (pendingNewChat) await pendingNewChat.catch(() => {})
     const { active, settings } = get()
     if (!active || !settings || get().generating[active.id]) return
     const { providerId, model } = effectiveModel(get())
@@ -242,6 +253,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async compact(instructions) {
+    if (pendingNewChat) await pendingNewChat.catch(() => {})
     const { active } = get()
     if (!active || get().generating[active.id] || get().compacting[active.id]) return
     const id = active.id
