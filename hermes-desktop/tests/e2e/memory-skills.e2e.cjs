@@ -50,7 +50,13 @@ const settle = (ms = 300) => new Promise(r => setTimeout(r, ms))
   win.on('pageerror', e => { console.error('PAGE ERROR', e.message); process.exitCode = 1 })
   win.on('dialog', d => d.accept())
   const idle = () => win.waitForFunction(() => !document.querySelector('.send.stop'), null, { timeout: 20000 })
-  const ask = async (q, fresh = true) => { if (fresh) await win.keyboard.press('Control+n'); await win.fill('.composer textarea', q); await win.keyboard.press('Enter') }
+  // Waits until the message is on screen, so a send that went missing fails here and not 30 s later.
+  const ask = async (q, fresh = true) => {
+    if (fresh) { await win.keyboard.press('Control+n'); await win.waitForSelector('.chat.is-empty') }
+    const before = await win.$$eval('.msg-user', (e) => e.length)
+    await win.fill('.composer textarea', q); await win.keyboard.press('Enter')
+    await win.waitForFunction((n) => document.querySelectorAll('.msg-user').length > n, before, { timeout: 8000 })
+  }
   const openTab = async (name) => { await win.keyboard.press('Control+,'); await win.click(`.tabs button:has-text("${name}")`) }
   const closeSettings = () => win.keyboard.press('Escape')
   const toolNames = (b) => (b.tools ?? []).map(t => t.function.name)

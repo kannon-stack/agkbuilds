@@ -114,6 +114,25 @@ const check = (c, m) => { console.log(c ? '• ok:' : '✗ FAIL:', m); if (!c) p
   await win.click('.tool-approve button:has-text("Deny")')
   await win.waitForFunction(() => !document.querySelector('.send.stop'))
 
+  // Ctrl+N and sending straight away (no pause) must go into the new chat, not the one being left.
+  const prevId = await win.evaluate(() => window.api.conversations.list().then((l) => l[0].id))
+  const prevCount = (await win.evaluate((id) => window.api.conversations.get(id), prevId)).messages.length
+  // Make creating a chat slow (as on a busy disk) so the message is typed while it is still in flight.
+  await app.evaluate(({ ipcMain }) => {
+    const orig = ipcMain._invokeHandlers.get('conversations:create')
+    ipcMain.removeHandler('conversations:create')
+    ipcMain.handle('conversations:create', async (...a) => { await new Promise((r) => setTimeout(r, 600)); return orig(...a) })
+  })
+  await win.keyboard.press('Control+n')
+  await win.fill('.composer textarea', 'quick one right after new chat')
+  await win.keyboard.press('Enter')
+  await win.waitForFunction(() => [...document.querySelectorAll('.msg-user .bubble')].some((b) => b.textContent === 'quick one right after new chat'), null, { timeout: 8000 })
+  await win.waitForFunction(() => !document.querySelector('.send.stop'))
+  const after = await win.evaluate((id) => window.api.conversations.get(id), prevId)
+  check(after.messages.length === prevCount, `message sent right after Ctrl+N did not land in the previous chat (${prevCount} → ${after.messages.length})`)
+  check(await win.$$eval('.msg-user', (e) => e.length) === 1, 'it is the first message of the new chat on screen')
+  await win.click('.conv:has-text("Can you write") >> nth=0'); await win.waitForSelector('.tool-denied')
+
   // Sidebar collapse: button and Ctrl+B, remembered across restarts.
   await win.click('.titlebar button[aria-label="Hide sidebar"]'); await win.waitForTimeout(300)
   check(await win.$('.app.sidebar-collapsed') !== null, 'title-bar button hides the sidebar')
@@ -143,7 +162,7 @@ const check = (c, m) => { console.log(c ? '• ok:' : '✗ FAIL:', m); if (!c) p
   check(await glass() === 'off', 'high-contrast theme forces solid panels')
 
   // The same chat across themes, for eyeballing.
-  await win.click('.conv >> nth=0'); await win.waitForSelector('.msg-assistant')
+  await win.click('.conv:has-text("Can you write") >> nth=0'); await win.waitForSelector('.msg-assistant')
   for (const [mode, theme, key] of [['dark', 'talaria-dark', 'darkTheme'], ['dark', 'midnight', 'darkTheme'], ['dark', 'forest', 'darkTheme'], ['dark', 'dusk', 'darkTheme'], ['light', 'talaria-light', 'lightTheme'], ['light', 'sky', 'lightTheme'], ['light', 'mint', 'lightTheme'], ['light', 'paper', 'lightTheme']]) {
     await win.evaluate(([m, t, k]) => window.api.settings.update({ theme: m, appearance: { [k]: t } }).then(() => location.reload()), [mode, theme, key])
     await win.waitForSelector('.msg-assistant'); await win.waitForTimeout(200)
