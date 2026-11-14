@@ -25,11 +25,10 @@ cd hermes-local
 ./setup.sh 4b            # one-time: llama-cpp-python, model weights, Hermes installer, config, start
 ```
 
-After a container restart, nothing is reinstalled; just start both processes again:
+After a container restart (which kills both processes; installs, models and config persist), run:
 
 ```bash
-./start-llm-server.sh 4b      # or 9b
-./start-hermes-gateway.sh
+./start-all.sh 4b      # or 9b; same as start-llm-server.sh then start-hermes-gateway.sh
 ```
 
 Use it:
