@@ -31,6 +31,20 @@ After a container restart (which kills both processes; installs, models and conf
 ./start-all.sh 4b      # or 9b; same as start-llm-server.sh then start-hermes-gateway.sh
 ```
 
+### Automatic restart
+
+`.claude/settings.json` registers a `SessionStart` hook (`.claude/hooks/session-start.sh`) that runs
+`hermes-local/ensure-running.sh` whenever a Claude Code cloud session starts, resumes, clears or compacts in this
+repo. It starts whichever of the model server and gateway is not running, in the background. The hook returns
+at once and the model is ready about 70 s later. Progress goes to `/root/llm-logs/autostart.log`.
+
+- It does nothing outside cloud sessions (`CLAUDE_CODE_REMOTE` must be `true`) and nothing on a machine where the
+  stack is not installed (it tells you to run `setup.sh`; it never downloads).
+- A lock prevents overlapping launches, and re-running when everything is up is a no-op.
+- It runs when a *session* starts. If the container restarts and nobody opens a session, nothing starts until
+  one does; the stack is still one command away (`./start-all.sh`).
+- To switch the autostart to the 9B model, change `4b` in `.claude/hooks/session-start.sh`.
+
 Use it:
 
 ```bash
@@ -46,6 +60,7 @@ python3 test_server.py                   # protocol checks for the model server
 | `setup.sh` | Idempotent installer for all four steps below |
 | `start-llm-server.sh [4b\|9b]` | Starts `qwen_tool_server.py` on `127.0.0.1:8080`; log at `/root/llm-logs/llm-server.log` |
 | `configure-hermes.sh [alias]` | Points `~/.hermes/config.yaml` and `.env` at the local server, pins auxiliary tasks to it, trims toolsets and raises timeouts |
+| `ensure-running.sh` | Starts only what is down, in the background; used by the SessionStart hook |
 | `start-hermes-gateway.sh` | Runs `hermes gateway run` in tmux session `hermes`; log at `/root/llm-logs/hermes-gateway.log` |
 | `qwen_tool_server.py` | The OpenAI-compatible model server (see below) |
 | `test_server.py` | Checks streaming and non-streaming tool calls, a tool-result round trip, and plain chat |
