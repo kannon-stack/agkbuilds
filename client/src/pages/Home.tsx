@@ -348,7 +348,7 @@ function Home() {
 
       <SparkleDivider />
       <section className="about section-pad" id="about">
-        <div className="section-heading"><SectionLabel index="01" children="About / operating system" /><span className="heading-note">DIGITAL SYSTEMS / PHYSICAL SYSTEMS</span></div>
+        <div className="section-heading"><SectionLabel index="01" children="About / operating system" /><span className="heading-note">DIGITAL SYSTEMS / PHYSICAL SYSTEMS</span></div><h2 className="section-title">About<sup>✻</sup></h2>
         <div className="bento-grid">
           <article className="bento-card bento-main">
             <div className="bento-icon"><Terminal size={20} /></div><span className="card-kicker">// 01 / THE SHORT VERSION</span>
@@ -365,28 +365,44 @@ function Home() {
 
       <SparkleDivider />
       <section className="work section-pad" id="work">
-        <div className="section-heading"><SectionLabel index="02" children="Selected work" /><span className="heading-note">SIX RÉSUMÉ THREADS, ONE PRACTICAL APPROACH</span></div>
-        <div className="projects-grid">{projects.map((project) => <article className={`project-card accent-${project.accent}`} key={project.number}><div className="project-top"><span className="project-number">{project.number}</span><span className="project-kind">{project.kind}</span><ArrowUpRight className="project-arrow" size={18} /></div><div className="project-visual"><span className="visual-mark">{project.number === "01" ? "//" : project.number === "02" ? "[]" : project.number === "03" ? "<>" : project.number === "04" ? "✳" : project.number === "05" ? "↗" : "∞"}</span><span className="visual-grid" /></div><div className="project-bottom"><div><h3>{project.title}</h3><p>{project.description}</p></div><span className="project-tag">{project.tag}</span></div></article>)}</div>
+        <div className="section-heading"><SectionLabel index="02" children="Selected work" /><span className="heading-note">SIX RÉSUMÉ THREADS, ONE PRACTICAL APPROACH</span></div><h2 className="section-title">Selected work<sup>✻</sup></h2>
+        <div className="projects-grid">{projects.map((project) => <article className={`project-card accent-${project.accent}`} key={project.number}><div className="project-top"><span className="project-number">#{Number(project.number)}</span><span className="project-kind">{project.kind}</span><ArrowUpRight className="project-arrow" size={18} /></div><div className="project-visual"><span className="visual-mark">{project.number === "01" ? "//" : project.number === "02" ? "[]" : project.number === "03" ? "<>" : project.number === "04" ? "✳" : project.number === "05" ? "↗" : "∞"}</span><span className="visual-grid" /></div><div className="project-bottom"><div><h3>{project.title}</h3><p>{project.description}</p></div><span className="project-tag">{project.tag}</span></div></article>)}</div>
       </section>
 
       <SparkleDivider />
       <section className="experience section-pad" id="experience">
-        <div className="section-heading"><SectionLabel index="03" children="Experience / timeline" /><span className="heading-note">2009—NOW / SAN ANTONIO + CENTRAL TEXAS</span></div>
+        <div className="section-heading"><SectionLabel index="03" children="Experience / timeline" /><span className="heading-note">2009—NOW / SAN ANTONIO + CENTRAL TEXAS</span></div><h2 className="section-title">Experience<sup>✻</sup></h2>
         <div className="timeline">{experience.map((item, index) => <article className="timeline-row" key={item.year}><div className="timeline-year">{item.year}</div><div className="timeline-marker"><span className={index === 0 ? "marker-dot active" : "marker-dot"} /></div><div className="timeline-content"><h3>{item.role}</h3><span className="timeline-scope">{item.scope}</span><p>{item.detail}</p></div><div className="timeline-index">0{index + 1}</div></article>)}</div>
       </section>
 
       <SparkleDivider />
       <section className="recognition section-pad" id="recognition">
-        <div className="section-heading"><SectionLabel index="04" children="Talks / awards / signal" /><span className="heading-note">THE RECEIPTS ARE IN THE WORK</span></div>
+        <div className="section-heading"><SectionLabel index="04" children="Talks / awards / signal" /><span className="heading-note">THE RECEIPTS ARE IN THE WORK</span></div><h2 className="section-title">Signal<sup>✻</sup></h2>
         <div className="recognition-grid">{recognition.map((item) => { const Icon = item.icon; return <article className="recognition-card" key={item.label}><div className="recognition-icon"><Icon size={17} /></div><div><span className="card-kicker">// {item.label}</span><h3>{item.title}</h3><p>{item.detail}</p></div><span className="recognition-state"><span className="status-dot" /> {item.state}</span></article>; })}</div>
       </section>
 
+      <SparkleDivider />
+      <section className="community section-pad" id="community">
+        <div className="section-heading"><SectionLabel index="05" children="Community / open server" /><span className="heading-note">DISCORD / LIVE MEMBER LIST</span></div>
+        <h2 className="section-title">Community<sup>✻</sup></h2>
+        <div className="community-grid">
+          <div className="community-copy">
+            <p>The community lives on Discord. See who’s online in the widget, then jump in, ask a question, or just watch the signal.</p>
+            <a className="text-link" href="#contact">Prefer email? Start a conversation <ArrowUpRight size={15} /></a>
+          </div>
+          <div className="discord-frame">
+            <span className="frame-label">// DISCORD / LIVE</span>
+            <iframe className="discord-widget" title="Discord server widget" src="https://discord.com/widget?id=1214174485444296764&theme=dark" width="350" height="500" frameBorder="0" loading="lazy" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" />
+          </div>
+        </div>
+      </section>
       <SparkleDivider variant="center" />
       <section className="contact section-pad" id="contact">
-        <div className="contact-panel"><Star className="corner-star corner-star-tl" /><Star className="corner-star corner-star-br" /><AsciiFlame className="contact-flame" rows={11} density={0.34} /><div className="contact-content"><SectionLabel index="05" children="Contact / open channel" /><h2>Need a fix?<br /><span>Let’s talk.</span></h2><p>For IT consulting, website work, repair, custom applications, or a practical problem that needs a second set of hands.</p><div className="contact-actions"><a className="button button-primary" href="mailto:dylanborgen@gmail.com">dylanborgen@gmail.com <ArrowUpRight size={16} /></a><a className="copy-button" href="tel:+12545892646"><Phone size={15} /> (254) 589-2646</a><button className="copy-button" onClick={copyEmail}>{copied ? <><Check size={15} /> copied</> : <><Copy size={15} /> copy email</>}</button></div></div><div className="contact-side"><span className="contact-side-label">AGKBUILDS / SAN ANTONIO</span><div className="contact-glyph"><Brackets size={45} strokeWidth={1} /></div><span className="contact-side-note">No gatekeepers.<br />Just a clear next step.</span></div></div>
+        <div className="contact-panel"><Star className="corner-star corner-star-tl" /><Star className="corner-star corner-star-br" /><AsciiFlame className="contact-flame" rows={11} density={0.34} /><div className="contact-content"><SectionLabel index="06" children="Contact / open channel" /><h2>Need a fix?<br /><span>Let’s talk.</span></h2><p>For IT consulting, website work, repair, custom applications, or a practical problem that needs a second set of hands.</p><div className="contact-actions"><a className="button button-primary" href="mailto:dylanborgen@gmail.com">dylanborgen@gmail.com <ArrowUpRight size={16} /></a><a className="copy-button" href="tel:+12545892646"><Phone size={15} /> (254) 589-2646</a><button className="copy-button" onClick={copyEmail}>{copied ? <><Check size={15} /> copied</> : <><Copy size={15} /> copy email</>}</button></div></div><div className="contact-side"><span className="contact-side-label">AGKBUILDS / SAN ANTONIO</span><div className="contact-glyph"><Brackets size={45} strokeWidth={1} /></div><span className="contact-side-note">No gatekeepers.<br />Just a clear next step.</span></div></div>
       </section>
 
       <TerminalEgg />
+      <div className="ghost-wordmark" aria-hidden="true">AGKBUILDS</div>
       <footer className="site-footer"><HatchStrip className="hatch-footer" /><a className="wordmark" href="#top"><span className="wordmark-cursor">_</span><span>AGK</span><strong>BUILDS</strong></a><span className="footer-copy">© {new Date().getFullYear()} Dylan Borgen. Built in San Antonio, with intent.</span><div className="footer-links"><a href="mailto:dylanborgen@gmail.com" aria-label="Email"><Mail size={16} /></a></div><a className="back-top" href="#top">BACK TO TOP <MoveUpRight size={14} /></a></footer>
     </main>
   );
