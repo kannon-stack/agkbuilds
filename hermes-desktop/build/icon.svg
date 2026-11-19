@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#1b2030"/>
+      <stop offset="1" stop-color="#0b0d12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.5">
+      <stop offset="0" stop-color="#e2b65c" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#e2b65c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#f6d98f"/>
+      <stop offset="1" stop-color="#d9a640"/>
+    </linearGradient>
+  </defs>
+  <!-- rounded square with the margin macOS/Windows expect around app icons -->
+  <rect x="100" y="100" width="824" height="824" rx="188" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="188" fill="url(#glow)"/>
+  <rect x="104" y="104" width="816" height="816" rx="184" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="8"/>
+  <!-- four-point star (the app's ✦ mark) -->
+  <path fill="url(#gold)" d="M512 214 C530 392 632 494 810 512 C632 530 530 632 512 810 C494 632 392 530 214 512 C392 494 494 392 512 214 Z"/>
+</svg>
