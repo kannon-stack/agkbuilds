@@ -58,7 +58,7 @@ button { font: inherit; }
 /* Borders: drawn from text characters — sparkle stars, tapering rules, slash hatch bars. */
 .ascii-star { margin: 0; flex: none; color: var(--signal); font: 500 15px/15px "DM Mono", ui-monospace, monospace; white-space: pre; text-shadow: 0 0 8px rgba(184,242,58,.6); user-select: none; animation: twinkle 5s ease-in-out infinite; }
 .ascii-star-small { font-size: 13px; line-height: 13px; opacity: .85; animation-delay: -2.2s; }
-.sparkle-divider { max-width: 1440px; margin: 0 auto; padding: 0 8vw; height: 92px; display: flex; align-items: center; gap: 10px; background: rgba(5,6,4,.64); backdrop-filter: blur(3px); }
+.sparkle-divider { max-width: 1240px; margin: 0 auto; padding: 0 8vw; height: 92px; display: flex; align-items: center; gap: 10px; background: rgba(5,6,4,.64); backdrop-filter: blur(3px); }
 .ascii-rule { flex: 1; min-width: 0; display: flex; flex-direction: column; color: var(--signal); font: 500 14px/14px "DM Mono", ui-monospace, monospace; user-select: none; -webkit-mask-image: linear-gradient(90deg, #000 0, rgba(0,0,0,.55) 65%, transparent 100%); mask-image: linear-gradient(90deg, #000 0, rgba(0,0,0,.55) 65%, transparent 100%); }
 .ascii-rule-reverse { transform: scaleX(-1); }
 .rule-row { display: flex; height: 14px; overflow: hidden; white-space: nowrap; }
@@ -110,7 +110,7 @@ button { font: inherit; }
 .hero-copy::before { content: ""; position: absolute; z-index: -1; inset: -60px -110px -50px -90px; pointer-events: none; background: radial-gradient(ellipse at 40% 50%, rgba(5,6,4,.82) 0, rgba(5,6,4,.62) 45%, transparent 72%); }
 .eyebrow { color: var(--signal); margin: 0 0 30px; }
 .eyebrow-prompt { margin-right: 8px; color: var(--signal-soft); }
-.hero h1 { margin: 0; color: var(--text); font-family: var(--display); font-size: clamp(78px, 12.4vw, 200px); font-weight: 600; line-height: .8; letter-spacing: -.02em; text-shadow: 0 2px 30px rgba(5,6,4,.7); }
+.hero h1 { margin: 0; color: var(--text); font-family: var(--display); font-size: clamp(78px, 12.4vw, 200px); font-weight: 500; line-height: .8; letter-spacing: -.02em; text-shadow: 0 2px 30px rgba(5,6,4,.7); }
 .h1-outline { color: transparent; -webkit-text-stroke: 1px rgba(231,234,223,.72); }
 .h1-signal { color: var(--signal); text-shadow: 0 0 25px rgba(184,242,58,.15); }
 .blink { color: var(--signal-soft); animation: blink 1.1s steps(1) infinite; }
@@ -136,9 +136,9 @@ button { font: inherit; }
 .scroll-line { width: 100px; height: 1px; background: linear-gradient(90deg, var(--signal), transparent); }
 .hero-footer span:last-child { margin-left: auto; }
 
-.section-pad { max-width: 1440px; margin: 0 auto; padding: 130px 8vw; }
+.section-pad { max-width: 1240px; margin: 0 auto; padding: 130px 8vw; }
 .statement, .about, .work, .recognition, .contact { background: rgba(5,6,4,.64); backdrop-filter: blur(3px); }
-.section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 45px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .section-label { display: flex; align-items: center; gap: 13px; color: var(--text); }
 .section-index { color: var(--signal); }
 .heading-note { color: #5e6859; }
@@ -146,7 +146,7 @@ button { font: inherit; }
 .statement-mark { display: flex; align-items: flex-start; flex-direction: column; gap: 4px; color: var(--signal); font: 500 12px/1 "DM Mono", monospace; }
 .statement-mark span:nth-child(2) { color: #53624c; margin-left: 7px; }
 .statement-mark span:nth-child(3) { color: #53624c; }
-.statement-copy h2 { max-width: 650px; margin: 18px 0 0; font-family: var(--display); font-size: clamp(40px, 5.6vw, 88px); font-weight: 600; line-height: .96; letter-spacing: -.01em; }
+.statement-copy h2 { max-width: 650px; margin: 18px 0 0; font-family: var(--display); font-size: clamp(40px, 5.6vw, 88px); font-weight: 400; line-height: .96; letter-spacing: -.01em; }
 .statement-copy h2 span { color: var(--signal); }
 .statement-aside { max-width: 230px; justify-self: end; padding-bottom: 2px; }
 .statement-aside p { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 26px; }
@@ -230,7 +230,7 @@ button { font: inherit; }
 .contact-panel { min-height: 440px; position: relative; isolation: isolate; overflow: hidden; display: grid; grid-template-columns: 1.3fr .7fr; padding: 54px 5vw; border: 1px solid var(--line); background: linear-gradient(120deg, rgba(32,51,21,.55), #11180e 64%); }
 .contact-content { position: relative; z-index: 1; }
 .contact-content .section-label { margin-bottom: 47px; }
-.contact-content h2 { margin: 0; font-family: var(--display); font-size: clamp(64px, 9.4vw, 148px); font-weight: 600; line-height: .84; letter-spacing: -.02em; }
+.contact-content h2 { margin: 0; font-family: var(--display); font-size: clamp(64px, 9.4vw, 148px); font-weight: 500; line-height: .84; letter-spacing: -.02em; }
 .contact-content h2 span { color: var(--signal); }
 .contact-content p { max-width: 390px; margin: 27px 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .contact-actions { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
@@ -246,6 +246,53 @@ button { font: inherit; }
 .footer-links a { color: #697361; transition: color .2s; }
 .footer-links a:hover { color: var(--signal); }
 .back-top { display: inline-flex; align-items: center; gap: 6px; color: var(--signal); text-decoration: none; font-size: 9px; }
+
+/* ---- Hermes-inspired structure: big light condensed titles, numbered labels, halftone art, paper flip ---- */
+:root { --paper: #edf0e4; --ink: #0d1109; --ink-muted: #4a5342; --ink-accent: #3d6000; }
+.section-title { margin: 0 0 46px; color: var(--text); font-family: var(--display); font-weight: 300; font-size: clamp(60px, 8vw, 118px); line-height: .88; letter-spacing: -.012em; }
+.section-title sup { margin-left: 12px; color: var(--signal); font-size: .24em; font-weight: 400; vertical-align: top; position: relative; top: .35em; }
+.bento-main h3, .project-bottom h3, .recognition-card h3, .timeline-content h3, .bento-signal h4, .bento-location strong { font-family: var(--display); font-weight: 500; letter-spacing: -.005em; line-height: .95; }
+.bento-main h3 { font-size: clamp(42px, 4.8vw, 70px); }
+.project-bottom h3 { font-size: 36px; }
+.recognition-card h3 { font-size: 32px; }
+.timeline-content h3 { font-size: clamp(32px, 3.6vw, 52px); }
+.bento-signal h4 { font-size: 30px; }
+.bento-location strong { font-size: 58px; }
+.project-number { font-size: 11px; }
+
+/* Buttons: hairline-first, invert on hover */
+.button-primary { border-color: var(--signal); }
+.button-primary:hover, .button-primary:focus-visible { transform: none; box-shadow: none; background: transparent; color: var(--signal); border-color: var(--signal); }
+
+/* Halftone dither over the card visuals, in each card's accent ink */
+.project-visual::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5; background-image: radial-gradient(circle at 25% 25%, var(--accent) 0 1.3px, transparent 1.8px), radial-gradient(circle at 75% 75%, var(--accent) 0 .9px, transparent 1.4px); background-size: 8px 8px; -webkit-mask-image: radial-gradient(circle at 50% 55%, #000 0, rgba(0,0,0,.15) 62%, transparent 82%); mask-image: radial-gradient(circle at 50% 55%, #000 0, rgba(0,0,0,.15) 62%, transparent 82%); }
+
+/* Light "paper" panel for Experience, the way Hermes flips blue to gray */
+.experience { background: var(--paper); color: var(--ink); backdrop-filter: none; }
+.experience .section-label, .experience .section-title { color: var(--ink); }
+.experience .section-index, .experience .section-title sup, .experience .timeline-year, .experience .timeline-scope { color: var(--ink-accent); }
+.experience .heading-note, .experience .timeline-index { color: #7b856f; }
+.experience .timeline { border-top-color: rgba(13,17,9,.28); }
+.experience .timeline-row { border-bottom-color: rgba(13,17,9,.2); }
+.experience .timeline-marker::before { background: rgba(13,17,9,.3); }
+.experience .timeline-content h3 { color: var(--ink); }
+.experience .timeline-content p { color: var(--ink-muted); }
+.experience .marker-dot { background: var(--paper); border-color: #6d7a5e; }
+.experience .marker-dot.active { background: var(--ink-accent); border-color: var(--ink-accent); box-shadow: none; }
+
+/* Giant ghost wordmark above the footer */
+.ghost-wordmark { margin: 0; padding: 36px 0 0; overflow: hidden; text-align: center; white-space: nowrap; user-select: none; background: rgba(5,6,4,.64); backdrop-filter: blur(3px); color: transparent; -webkit-text-stroke: 1px rgba(184,242,58,.3); font-family: var(--display); font-weight: 400; font-size: clamp(90px, 21vw, 340px); line-height: .8; letter-spacing: .005em; }
+
+/* Community: Discord widget in a hairline frame */
+.community { background: rgba(5,6,4,.64); backdrop-filter: blur(3px); }
+.community-grid { display: grid; grid-template-columns: 1fr auto; gap: 56px; align-items: start; }
+.community-copy p { max-width: 430px; margin: 0 0 28px; color: var(--muted); font-size: 15px; line-height: 1.6; }
+.discord-frame { position: relative; width: 378px; max-width: 100%; padding: 14px; border: 1px solid var(--line); background: rgba(9,12,8,.82); backdrop-filter: blur(10px); }
+.frame-label { display: block; margin: 0 0 12px; color: var(--signal); font: 500 10px/1 "DM Mono", ui-monospace, monospace; letter-spacing: .08em; }
+.discord-widget { display: block; width: 100%; height: 500px; border: 0; background: transparent; }
+@media (max-width: 800px) {
+  .community-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+}
 
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
@@ -300,7 +347,7 @@ button { font: inherit; }
   .statement-aside p { margin-bottom: 22px; }
   .bento-grid { display: flex; flex-direction: column; }
   .bento-card { min-height: 220px; }
-  .bento-main { min-height: 330px; }
+  .bento-main { min-height: 410px; }
   .bento-stack { min-height: 180px; }
   .stack-list { grid-template-columns: repeat(2, 1fr); row-gap: 15px; }
   .projects-grid { grid-template-columns: 1fr; }
