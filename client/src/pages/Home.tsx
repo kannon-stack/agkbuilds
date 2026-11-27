@@ -1,410 +1,203 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  Award,
-  Brackets,
-  Check,
-  CircleDot,
-  Code2,
-  Copy,
-  Layers3,
-  Mail,
-  MapPin,
-  Menu,
-  Mic2,
-  MoveUpRight,
-  Phone,
-  Radio,
-  Terminal,
-  X,
-} from "lucide-react";
-import { AsciiBackdrop, AsciiFlame } from "@/components/AsciiBackdrop";
-import { HatchStrip, SparkleDivider, Star } from "@/components/Ornaments";
+import { ArrowRight, Check, Cpu, Globe, HardDrive, Lock, Mail, SlidersHorizontal, Wrench } from "lucide-react";
+import { AsciiEye, AsciiFlames, AsciiLogo, HatchBars, RuleLine, SparkleDivider } from "@/components/Ascii";
+import { QuoteForm } from "@/components/QuoteForm";
+import { CONTACT_EMAIL } from "@/lib/quote";
+import { BASE_FLAMES, HERO_FLAMES } from "@/lib/asciiArt";
 
-const projects = [
-  {
-    number: "01",
-    kind: "IT / consulting",
-    title: "AGKBuilds / IT Services",
-    description: "Computer builds and repair, data recovery, custom business applications, network diagnostics, website design, phone repair, and client consultation.",
-    tag: "MAY 2025—NOW",
-    accent: "lime",
-  },
-  {
-    number: "02",
-    kind: "Field work",
-    title: "Independent Contractor",
-    description: "Bidding and completing landscaping, hardscaping, general repairs, painting, make-readies, wood repair, lock work, roof repair, and trash hauls across Central Texas.",
-    tag: "2016—2019",
-    accent: "mint",
-  },
-  {
-    number: "03",
-    kind: "Construction",
-    title: "R&S / Heavy Equipment",
-    description: "Operated a variety of construction equipment, handled job-site issues and minor repairs, communicated with management, and took a leadership role when needed.",
-    tag: "2019—2021",
-    accent: "amber",
-  },
-  {
-    number: "04",
-    kind: "Remodeling",
-    title: "Real Star / Remodels",
-    description: "Replaced windows, installed kitchen cabinets, created wood structures, repaired roofs and floors, coordinated laborers, and collaborated with other craftsmen.",
-    tag: "2021—2022",
-    accent: "purple",
-  },
-  {
-    number: "05",
-    kind: "Production",
-    title: "UGN / Toyota Components",
-    description: "Assembled trunk components for Toyota vehicles on a production line while meeting daily quality and output targets.",
-    tag: "JAN—MAY 2025",
-    accent: "blue",
-  },
-  {
-    number: "06",
-    kind: "Customer care",
-    title: "Service / Communication",
-    description: "Supported healthcare members, collected payments, and delivered customer service across Teleperformance and GC Services.",
-    tag: "2014—2015",
-    accent: "pink",
-  },
+const navLinks = [
+  { href: "#services", label: "Services" },
+  { href: "#builds", label: "Builds" },
+  { href: "#process", label: "Process" },
+  { href: "#community", label: "Community" },
 ];
 
-const experience = [
-  {
-    year: "2025—NOW",
-    role: "AGKBuilds / Owner · IT Consultant",
-    scope: "San Antonio, TX",
-    detail: "Builds and repairs computer systems, performs data recovery, develops custom applications for small businesses, diagnoses networks, designs websites, repairs phones, and consults with clients.",
-  },
-  {
-    year: "2025",
-    role: "UGN / Production · Assembly",
-    scope: "Somerset, KY",
-    detail: "Assembled trunk components for Toyota vehicles on a production line while meeting daily quality and output targets.",
-  },
-  {
-    year: "2022—2025",
-    role: "AGKBuilds / Owner · IT Consultant",
-    scope: "San Antonio, TX",
-    detail: "Independent IT consulting across computer systems, data recovery, business applications, network troubleshooting, websites, phone repair, and client support.",
-  },
-  {
-    year: "2021—2022",
-    role: "Real Star Property Management / Remodeling",
-    scope: "Killeen, TX",
-    detail: "Replaced windows, installed cabinets, built wood structures, repaired roofs and floors, coordinated laborers, and handled demolition work.",
-  },
-  {
-    year: "2019—2021",
-    role: "R&S Excavation / Heavy Equipment Operator",
-    scope: "San Antonio, TX",
-    detail: "Operated construction equipment, handled job-site issues and minor repairs, communicated with management, and took a leadership role on site.",
-  },
-  {
-    year: "2016—2019",
-    role: "Central Texas Area / Independent Contractor",
-    scope: "Central Texas",
-    detail: "Bidded and completed landscaping, hardscaping, general repairs, painting, make-readies, wood repair, lock work, roof repair, and trash hauls.",
-  },
-  {
-    year: "2009—2016",
-    role: "Crew lead · customer care · maintenance",
-    scope: "Killeen · Harker Heights · Copperas Cove, TX",
-    detail: "Led lawn crews, maintained equipment, supported property make-readies, handled healthcare customer care and collections, welded, operated forklifts, repaired vehicles, and maintained properties.",
-  },
+const facts = [
+  { label: "Local", text: "Based in San Antonio, Texas." },
+  { label: "Diagnosis first", text: "You hear what is wrong before anything is fixed." },
+  { label: "Clear quotes", text: "You approve the price before work starts." },
+  { label: "Your data stays yours", text: "Files are handled with care and returned to you." },
 ];
 
-const recognition = [
-  { icon: Mic2, label: "TALKS", title: "No public talks listed.", detail: "The résumé points to hands-on, client-facing work rather than stage appearances.", state: "NOT LISTED" },
-  { icon: Award, label: "AWARDS", title: "No formal awards listed.", detail: "The strongest proof points are range, steady progression, and work that holds up on site.", state: "NOT LISTED" },
-  { icon: Radio, label: "SIGNAL", title: "90 words per minute.", detail: "Fast, clear communication across IT consulting, production, customer care, and field work.", state: "SKILL" },
+const services = [
+  { icon: Wrench, title: "Computer repair", text: "Laptops and desktops that will not boot, run slow, overheat, or have failing parts. Diagnosed first, fixed once." },
+  { icon: Cpu, title: "Custom PC builds", text: "Gaming, creative, and home-office machines chosen for your budget, built clean, and tested before handoff." },
+  { icon: HardDrive, title: "Data recovery", text: "Files back from failing, damaged, or unreadable drives. If a drive is clicking or not showing up, stop using it and get in touch." },
+  { icon: Lock, title: "Locked out?", text: "We help you get back into your own computer, where it can be done without losing your files. Proof of ownership required." },
+  { icon: Globe, title: "Websites", text: "Clean, fast sites for small businesses: one clear page that explains what you do and how to reach you." },
+  { icon: SlidersHorizontal, title: "Cleanup and upgrades", text: "Slow or cluttered machines cleaned up, plus SSD and RAM upgrades and new-PC setup with your files moved over." },
 ];
 
-function SectionLabel({ index, children }: { index: string; children: string }) {
-  return (
-    <div className="section-label">
-      <span className="section-index">{index}</span>
-      <span>{children}</span>
-    </div>
-  );
-}
+const buildTypes = [
+  "Gaming rigs",
+  "Creative and workstation machines",
+  "Home and office computers",
+  "Upgrades to a PC you already own",
+];
 
-function TerminalEgg() {
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState("");
-  const [lines, setLines] = useState([
-    "AGKBUILDS terminal // v1.0",
-    "background index loaded. type 'help' to browse.",
-  ]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
-      if ((event.key === "~" || event.key === "/") && !isTyping) {
-        event.preventDefault();
-        setOpen(true);
-      }
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    if (open) window.setTimeout(() => inputRef.current?.focus(), 40);
-  }, [open]);
-
-  const runCommand = (rawCommand: string) => {
-    const command = rawCommand.trim().toLowerCase();
-    if (!command) return;
-    const responses: Record<string, string[]> = {
-      help: [
-        "available commands:",
-        "  whoami       quick identity readout",
-        "  background   the short professional story",
-        "  skills       digital + physical toolkit",
-        "  experience   timeline from 2009 to now",
-        "  work         selected résumé threads",
-        "  contact      open a line to Dylan",
-        "  clear        wipe the terminal",
-      ],
-      whoami: [
-        "Dylan Borgen // owner + IT consultant",
-        "AGKBuilds // San Antonio, Texas",
-        "builder, troubleshooter, field operator",
-      ],
-      background: [
-        "AGKBuilds is Dylan's independent practice for IT consulting and hands-on problem solving.",
-        "The range runs from computer systems, data recovery, networks, websites, and phone repair",
-        "to remodeling, excavation, landscaping, welding, maintenance, and customer care.",
-      ],
-      skills: [
-        "computer build / repair · data recovery · business applications",
-        "network diagnostics · troubleshooting · website design · phone repair",
-        "Excel · Photoshop · OBS Studio · PhotoPad · heavy equipment",
-        "painting · carpentry · landscaping · hardscaping · concrete · fencing · welding",
-        "90 WPM · customer service · practical problem solving",
-      ],
-      experience: [
-        "2025—now  AGKBuilds / Owner · IT Consultant / San Antonio",
-        "2025      UGN / Production · Assembly / Somerset",
-        "2022—25   AGKBuilds / Owner · IT Consultant / San Antonio",
-        "2021—22   Real Star Property Management / Remodeling / Killeen",
-        "2019—21   R&S Excavation / Heavy Equipment Operator / San Antonio",
-        "2009—19   Central Texas field work, crew leadership, customer care, maintenance",
-      ],
-      work: [
-        "01  IT services       systems, networks, websites, repair",
-        "02  Field work        landscaping, repairs, make-readies, roofing",
-        "03  Construction      excavation, equipment, job-site leadership",
-        "04  Remodeling        windows, cabinets, roofs, floors, demolition",
-        "05  Production        Toyota trunk components / quality targets",
-        "06  Communication     healthcare support, collections, customer care",
-      ],
-      contact: [
-        "email   dylanborgen@gmail.com",
-        "phone   (254) 589-2646",
-        "base    San Antonio, TX",
-        "status  open to practical problems",
-      ],
-    };
-
-    if (command === "clear") {
-      setLines([]);
-    } else {
-      setLines((current) => [
-        ...current,
-        `visitor@agkbuilds:~$ ${rawCommand}`,
-        ...(responses[command] ?? [`command not found: ${command}. try 'help'.`]),
-      ]);
-    }
-    setInput("");
-  };
-
-  return (
-    <>
-      <button className="terminal-trigger" onClick={() => setOpen(true)} aria-label="Open Dylan's interactive terminal">
-        <Terminal size={14} /> <span>open terminal</span> <b>~</b>
-      </button>
-      {open && (
-        <div className="terminal-overlay" role="dialog" aria-modal="true" aria-label="AGKBUILDS interactive terminal" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
-          <div className="terminal-window">
-            <div className="terminal-bar"><span className="terminal-lights"><i /><i /><i /></span><span>visitor@agkbuilds: ~/background</span><button onClick={() => setOpen(false)} aria-label="Close terminal"><X size={15} /></button></div>
-            <div className="terminal-output" aria-live="polite">{lines.map((line, index) => <div key={`${line}-${index}`} className={line.startsWith("visitor@") ? "terminal-command" : "terminal-line"}>{line}</div>)}</div>
-            <form className="terminal-form" onSubmit={(event) => { event.preventDefault(); runCommand(input); }}><span>visitor@agkbuilds:~$</span><input ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} autoComplete="off" autoCapitalize="none" spellCheck="false" aria-label="Terminal command" /></form>
-            <div className="terminal-hints">try: help · whoami · skills · experience · work · contact · clear</div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
+const steps = [
+  { title: "Tell us what is wrong", text: "Send the quote form or an email with the device and the problem. Photos of error messages help." },
+  { title: "We diagnose and quote", text: "You get a plain answer on what is wrong, what it takes to fix, and what it costs." },
+  { title: "You approve, we fix", text: "Work starts only after you say yes. You get the machine back and a note on what was done." },
+];
 
 function Home() {
-  const heroRef = useRef<HTMLElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    const hero = heroRef.current;
-    if (!hero) return;
-
-    const move = (event: PointerEvent) => {
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || window.matchMedia("(pointer: coarse)").matches) return;
-      const bounds = hero.getBoundingClientRect();
-      const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
-      const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
-      hero.style.setProperty("--pointer-x", `${x}%`);
-      hero.style.setProperty("--pointer-y", `${y}%`);
-      hero.style.setProperty("--hero-rotate-x", `${(50 - y) * 0.035}deg`);
-      hero.style.setProperty("--hero-rotate-y", `${(x - 50) * 0.035}deg`);
-    };
-
-    const reset = () => {
-      hero.style.setProperty("--pointer-x", "50%");
-      hero.style.setProperty("--pointer-y", "50%");
-      hero.style.setProperty("--hero-rotate-x", "0deg");
-      hero.style.setProperty("--hero-rotate-y", "0deg");
-    };
-
-    hero.addEventListener("pointermove", move);
-    hero.addEventListener("pointerleave", reset);
-    return () => {
-      hero.removeEventListener("pointermove", move);
-      hero.removeEventListener("pointerleave", reset);
-    };
-  }, []);
-
-  const copyEmail = async () => {
-    await navigator.clipboard?.writeText("dylanborgen@gmail.com");
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  };
-
-  const closeMenu = () => setMenuOpen(false);
-
   return (
-    <main className="site-shell">
-      <AsciiBackdrop />
-      <header className="site-header">
-        <HatchStrip className="hatch-header" />
-        <a className="wordmark" href="#top" onClick={closeMenu} aria-label="AGKBUILDS home">
-          <span className="wordmark-cursor" aria-hidden="true">_</span>
-          <span>AGK</span><strong>BUILDS</strong>
-          <span className="wordmark-meta">TX // 01</span>
-        </a>
-        <nav className={menuOpen ? "site-nav is-open" : "site-nav"} aria-label="Primary navigation">
-          <a href="#work" onClick={closeMenu}>Work <span>01</span></a>
-          <a href="#about" onClick={closeMenu}>About <span>02</span></a>
-          <a href="#experience" onClick={closeMenu}>Experience <span>03</span></a>
-          <a href="#contact" onClick={closeMenu}>Contact <span>04</span></a>
-        </nav>
-        <button className="menu-toggle" onClick={() => setMenuOpen((open) => !open)} aria-label={menuOpen ? "Close navigation" : "Open navigation"} aria-expanded={menuOpen}>
-          {menuOpen ? <X size={19} /> : <Menu size={19} />}
-        </button>
-        <a className="header-status" href="#contact"><span className="status-dot" /> IT / web / repair / field work</a>
+    <div className="pg" id="top">
+      <AsciiEye />
+
+      <header>
+        <div className="masthead">
+          <a href="#top" className="logo-link" aria-label="AGKBuilds home">
+            <AsciiLogo />
+          </a>
+        </div>
+        <HatchBars />
+        <div className="wrap navbar">
+          <nav aria-label="Primary">
+            {navLinks.map((link) => (
+              <a key={link.href} className="nav-link" href={link.href}>{link.label}</a>
+            ))}
+          </nav>
+          <a className="btn btn-primary" href="#quote">Request a quote</a>
+        </div>
       </header>
 
-      <section className="hero" id="top" ref={heroRef}>
-        <div className="hero-signal" aria-hidden="true" />
-        <div className="hero-grid" aria-hidden="true" />
-        <span className="corner-label corner-tl" aria-hidden="true">[ 200 OK ]</span>
-        <span className="corner-label corner-tr" aria-hidden="true">[ SAN ANTONIO ]</span>
-        <span className="crosshair crosshair-a" aria-hidden="true" />
-        <span className="crosshair crosshair-b" aria-hidden="true" />
-        <AsciiFlame className="hero-flame" rows={13} density={0.28} />
-        <div className="hero-copy">
-          <p className="eyebrow"><span className="eyebrow-prompt">&gt;_</span> owner / IT consultant / san antonio</p>
-          <h1>I make the<br /><span className="h1-outline">complicated</span><br /><span className="h1-signal">useful<span className="blink">_</span></span></h1>
-          <p className="hero-intro">I’m Dylan Borgen — owner of AGKBuilds in San Antonio. I build and repair computer systems, solve network and data problems, design websites, and bring the same practical mindset to field work.</p>
-          <div className="hero-actions">
-            <a className="button button-primary" href="#work">See selected work <ArrowDownRight size={16} /></a>
-            <a className="text-link" href="#about">How I work <ArrowUpRight size={15} /></a>
+      <main>
+        <section>
+          <div className="wrap hero">
+            <div className="col">
+              <p className="kicker">San Antonio, TX</p>
+              <h1>Tech trouble?<br /><span className="accent">We've got you.</span></h1>
+              <p className="hero-intro">AGKBuilds is a San Antonio shop for computer repair, custom PC builds, data recovery, and the tech problems that come with them.</p>
+              <div className="hero-actions">
+                <a className="btn btn-primary btn-lg" href="#quote">Request a quote <ArrowRight size={18} aria-hidden="true" /></a>
+                <a className="mail-link" href={`mailto:${CONTACT_EMAIL}`}><Mail size={18} aria-hidden="true" /> {CONTACT_EMAIL}</a>
+              </div>
+            </div>
+            <div className="col">
+              <figure className="photo photo-hero">
+                <img src="/photos/repair-bench.webp" alt="Inside a Dell desktop with the side panel off, showing the motherboard, CPU cooler and power supply" width={1400} height={1866} />
+                <figcaption>On the bench · Dell desktop open for diagnosis</figcaption>
+              </figure>
+            </div>
           </div>
-        </div>
-        <div className="hero-card-wrap" aria-hidden="true">
-          <div className="hero-card">
-            <div className="hero-card-top"><span>AGK / SYSTEM ONLINE</span><span className="hero-card-live"><span className="status-dot" /> LIVE</span></div>
-            <div className="hero-card-mark"><Brackets size={32} strokeWidth={1.2} /><span>build<br />something<br /><em>useful</em></span></div>
-            <div className="hero-card-bottom"><span>SAN ANTONIO</span><span>TX / USA</span><span>v.01</span></div>
+          <AsciiFlames frames={HERO_FLAMES} />
+        </section>
+
+        <section>
+          <div className="wrap">
+            <RuleLine />
+            <div className="facts">
+              {facts.map((fact) => (
+                <div key={fact.label}>
+                  <p className="fact-label">{fact.label}</p>
+                  <p className="fact-text">{fact.text}</p>
+                </div>
+              ))}
+            </div>
+            <RuleLine />
           </div>
-          <div className="hero-card-caption">cursor-sensitive interface / move around</div>
-        </div>
-        <div className="hero-footer"><span>SCROLL TO EXPLORE</span><span className="scroll-line" /><span>001 / 005</span></div>
-      </section>
+        </section>
 
-      <HatchStrip />
-      <section className="statement section-pad">
-        <div className="statement-mark" aria-hidden="true"><span>AGK</span><span>+</span><span>∞</span></div>
-        <div className="statement-copy"><SectionLabel index="00" children="A quick read" /><h2>Useful is a skill. <span>Range is the advantage.</span></h2></div>
-        <div className="statement-aside"><p>From IT consulting and custom applications to welding, remodeling, equipment operation, and landscaping — I’m comfortable learning the problem and getting to work.</p><a href="#contact" className="text-link">Start a conversation <ArrowUpRight size={15} /></a></div>
-      </section>
-
-      <SparkleDivider />
-      <section className="about section-pad" id="about">
-        <div className="section-heading"><SectionLabel index="01" children="About / operating system" /><span className="heading-note">DIGITAL SYSTEMS / PHYSICAL SYSTEMS</span></div><h2 className="section-title">About<sup>✻</sup></h2>
-        <div className="bento-grid">
-          <article className="bento-card bento-main">
-            <div className="bento-icon"><Terminal size={20} /></div><span className="card-kicker">// 01 / THE SHORT VERSION</span>
-            <h3>Many fields.<br /><span>One useful habit.</span></h3>
-            <p>AGKBuilds is Dylan’s independent practice for IT consulting and hands-on problem solving. The throughline is simple: diagnose clearly, communicate directly, and leave the system better than it was.</p>
-            <div className="card-foot"><span>01—06</span><span>KEEP IT MOVING <ArrowUpRight size={14} /></span></div>
-          </article>
-          <article className="bento-card bento-signal"><div className="signal-orbit"><span className="orbit-core">AGK</span><span className="orbit-ring ring-one" /><span className="orbit-ring ring-two" /></div><span className="card-kicker">// CURRENT SIGNAL</span><h4>Curious, calm,<br /><em>resourceful.</em></h4><span className="mini-caption">the working trio</span></article>
-          <article className="bento-card bento-location"><MapPin size={18} /><span className="card-kicker">// BASED IN</span><strong>San Antonio</strong><span className="mini-caption">Texas / available for practical work</span></article>
-          <article className="bento-card bento-stack"><span className="card-kicker">// THE TOOLKIT</span><div className="stack-list"><span><Code2 size={14} /> IT + web</span><span><Layers3 size={14} /> networks</span><span><Brackets size={14} /> repair</span><span><CircleDot size={14} /> field work</span></div></article>
-          <article className="bento-card bento-note"><span className="quote-mark">“</span><p>Diagnose first. Then make the fix useful.</p><span className="mini-caption">operating principle / 001</span></article>
-        </div>
-      </section>
-
-      <SparkleDivider />
-      <section className="work section-pad" id="work">
-        <div className="section-heading"><SectionLabel index="02" children="Selected work" /><span className="heading-note">SIX RÉSUMÉ THREADS, ONE PRACTICAL APPROACH</span></div><h2 className="section-title">Selected work<sup>✻</sup></h2>
-        <div className="projects-grid">{projects.map((project) => <article className={`project-card accent-${project.accent}`} key={project.number}><div className="project-top"><span className="project-number">#{Number(project.number)}</span><span className="project-kind">{project.kind}</span><ArrowUpRight className="project-arrow" size={18} /></div><div className="project-visual"><span className="visual-mark">{project.number === "01" ? "//" : project.number === "02" ? "[]" : project.number === "03" ? "<>" : project.number === "04" ? "✳" : project.number === "05" ? "↗" : "∞"}</span><span className="visual-grid" /></div><div className="project-bottom"><div><h3>{project.title}</h3><p>{project.description}</p></div><span className="project-tag">{project.tag}</span></div></article>)}</div>
-      </section>
-
-      <SparkleDivider />
-      <section className="experience section-pad" id="experience">
-        <div className="section-heading"><SectionLabel index="03" children="Experience / timeline" /><span className="heading-note">2009—NOW / SAN ANTONIO + CENTRAL TEXAS</span></div><h2 className="section-title">Experience<sup>✻</sup></h2>
-        <div className="timeline">{experience.map((item, index) => <article className="timeline-row" key={item.year}><div className="timeline-year">{item.year}</div><div className="timeline-marker"><span className={index === 0 ? "marker-dot active" : "marker-dot"} /></div><div className="timeline-content"><h3>{item.role}</h3><span className="timeline-scope">{item.scope}</span><p>{item.detail}</p></div><div className="timeline-index">0{index + 1}</div></article>)}</div>
-      </section>
-
-      <SparkleDivider />
-      <section className="recognition section-pad" id="recognition">
-        <div className="section-heading"><SectionLabel index="04" children="Talks / awards / signal" /><span className="heading-note">THE RECEIPTS ARE IN THE WORK</span></div><h2 className="section-title">Signal<sup>✻</sup></h2>
-        <div className="recognition-grid">{recognition.map((item) => { const Icon = item.icon; return <article className="recognition-card" key={item.label}><div className="recognition-icon"><Icon size={17} /></div><div><span className="card-kicker">// {item.label}</span><h3>{item.title}</h3><p>{item.detail}</p></div><span className="recognition-state"><span className="status-dot" /> {item.state}</span></article>; })}</div>
-      </section>
-
-      <SparkleDivider />
-      <section className="community section-pad" id="community">
-        <div className="section-heading"><SectionLabel index="05" children="Community / open server" /><span className="heading-note">DISCORD / LIVE MEMBER LIST</span></div>
-        <h2 className="section-title">Community<sup>✻</sup></h2>
-        <div className="community-grid">
-          <div className="community-copy">
-            <p>The community lives on Discord. See who’s online in the widget, then jump in, ask a question, or just watch the signal.</p>
-            <a className="text-link" href="#contact">Prefer email? Start a conversation <ArrowUpRight size={15} /></a>
+        <section id="services">
+          <div className="wrap section-tall">
+            <p className="kicker">Services</p>
+            <h2>What we fix, build, and recover.</h2>
+            <div className="service-grid">
+              {services.map(({ icon: Icon, title, text }) => (
+                <article className="card" key={title}>
+                  <Icon size={30} strokeWidth={1.6} aria-hidden="true" />
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                </article>
+              ))}
+            </div>
           </div>
-          <div className="discord-frame">
-            <span className="frame-label">// DISCORD / LIVE</span>
-            <iframe className="discord-widget" title="Discord server widget" src="https://discord.com/widget?id=1214174485444296764&theme=dark" width="350" height="500" frameBorder="0" loading="lazy" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" />
-          </div>
-        </div>
-      </section>
-      <SparkleDivider variant="center" />
-      <section className="contact section-pad" id="contact">
-        <div className="contact-panel"><Star className="corner-star corner-star-tl" /><Star className="corner-star corner-star-br" /><AsciiFlame className="contact-flame" rows={11} density={0.34} /><div className="contact-content"><SectionLabel index="06" children="Contact / open channel" /><h2>Need a fix?<br /><span>Let’s talk.</span></h2><p>For IT consulting, website work, repair, custom applications, or a practical problem that needs a second set of hands.</p><div className="contact-actions"><a className="button button-primary" href="mailto:dylanborgen@gmail.com">dylanborgen@gmail.com <ArrowUpRight size={16} /></a><a className="copy-button" href="tel:+12545892646"><Phone size={15} /> (254) 589-2646</a><button className="copy-button" onClick={copyEmail}>{copied ? <><Check size={15} /> copied</> : <><Copy size={15} /> copy email</>}</button></div></div><div className="contact-side"><span className="contact-side-label">AGKBUILDS / SAN ANTONIO</span><div className="contact-glyph"><Brackets size={45} strokeWidth={1} /></div><span className="contact-side-note">No gatekeepers.<br />Just a clear next step.</span></div></div>
-      </section>
+        </section>
 
-      <TerminalEgg />
-      <div className="ghost-wordmark" aria-hidden="true">AGKBUILDS</div>
-      <footer className="site-footer"><HatchStrip className="hatch-footer" /><a className="wordmark" href="#top"><span className="wordmark-cursor">_</span><span>AGK</span><strong>BUILDS</strong></a><span className="footer-copy">© {new Date().getFullYear()} Dylan Borgen. Built in San Antonio, with intent.</span><div className="footer-links"><a href="mailto:dylanborgen@gmail.com" aria-label="Email"><Mail size={16} /></a></div><a className="back-top" href="#top">BACK TO TOP <MoveUpRight size={14} /></a></footer>
-    </main>
+        <SparkleDivider />
+
+        <section id="builds">
+          <div className="wrap section split">
+            <div className="col">
+              <figure className="photo photo-build">
+                <img src="/photos/custom-build.webp" alt="A Gigabyte motherboard with CPU cooler, RAM and power cables set up on a test bench" width={1400} height={1866} loading="lazy" />
+                <figcaption>Test bench · parts checked before assembly</figcaption>
+              </figure>
+            </div>
+            <div className="col">
+              <p className="kicker">Custom builds</p>
+              <h2>Built for how you actually use it.</h2>
+              <p className="lead">Parts are picked with you, assembled cleanly, and tested before the machine leaves the bench. You get a computer that fits your budget and your work.</p>
+              <ul className="check-list">
+                {buildTypes.map((type) => (
+                  <li key={type}><Check size={18} strokeWidth={2.2} aria-hidden="true" />{type}</li>
+                ))}
+              </ul>
+              <a className="btn btn-secondary" href="#quote">Ask about a build</a>
+            </div>
+          </div>
+        </section>
+
+        <SparkleDivider />
+
+        <section id="process" className="band">
+          <div className="wrap section-tall">
+            <p className="kicker">How it works</p>
+            <h2>Three steps, no surprises.</h2>
+            <ol className="steps">
+              {steps.map((step, index) => (
+                <li key={step.title}>
+                  <p className="step-number">0{index + 1}</p>
+                  <h3>{step.title}</h3>
+                  <p className="step-text">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <SparkleDivider />
+
+        <section id="community">
+          <div className="wrap section community">
+            <div className="community-copy">
+              <p className="kicker">Community</p>
+              <h2>Hang out on Discord.</h2>
+              <p className="lead">The community lives on Discord. See who is online, jump in, and ask a question about builds, repairs, or anything in between.</p>
+            </div>
+            <div className="discord-frame">
+              <p className="frame-label">Discord · live</p>
+              <iframe className="discord-widget" title="Discord server widget" src="https://discord.com/widget?id=1214174485444296764&theme=dark" width="350" height="500" loading="lazy" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" />
+            </div>
+          </div>
+        </section>
+
+        <SparkleDivider />
+
+        <section id="quote" className="band">
+          <div className="wrap section-tall quote">
+            <div className="quote-copy">
+              <p className="kicker">Contact</p>
+              <h2 className="quote-title">Need a fix?<br /><span className="accent">Request a quote.</span></h2>
+              <p className="lead">Tell us what is going on and we will get back to you with a plain answer and a price. Prefer email? Write to us directly.</p>
+              <a className="mail-link mail-link-lg" href={`mailto:${CONTACT_EMAIL}`}><Mail size={20} aria-hidden="true" /> {CONTACT_EMAIL}</a>
+            </div>
+            <QuoteForm />
+          </div>
+          <AsciiFlames frames={BASE_FLAMES} />
+        </section>
+      </main>
+
+      <footer>
+        <HatchBars />
+        <div className="wrap footer-row">
+          <a href="#top" className="footer-mark">AGK<span className="accent">Builds</span></a>
+          <p>San Antonio, TX · © {new Date().getFullYear()} AGKBuilds</p>
+          <a className="footer-mail" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+        </div>
+      </footer>
+    </div>
   );
 }
 
